@@ -1,4 +1,4 @@
-# AutoDraw — Plan (draft 3)
+# AutoDraw — Plan (draft 4)
 
 Inventor 2025 add-in that generates drawings for every part and sub-assembly of the open assembly,
 with a drawing layout per part type and automatic dimensions.
@@ -19,10 +19,10 @@ Status: **planning** — nothing is built yet. Items marked ❓ are still open.
 | A2 | Ribbon | One **AutoDraw** button, **assembly environment only** |
 | A3 | Window | Full, separate, non-modal window (second monitor ok), remembers size/position, maximisable |
 | A4 | Start | Loads the active assembly's full structure immediately |
-| B5 | List | **Tree** (assembly structure), **fully expanded** by default |
-| B6 | Content Center | **Hidden by default** (toggle "Show Content Center"); no other auto-exclusion |
-| B7 | Existing drawing | **Ask** when a drawing already exists |
-| B8 | Columns | Configurable; **Aantal** is a custom iProperty — user picks any custom iProperty as a column from the window itself |
+| B5 | List | **Tree** (assembly structure), **fully expanded** by default, sorted top-down (see §2) |
+| B6 | Content Center | Separate **"Content Center" group at the bottom, collapsed** and unchecked |
+| B7 | Existing drawing | **Ask once per run** (overwrite all / skip all) when one or more .idw files exist |
+| B8 | Columns | Configurable; **Aantal** is a custom iProperty — user picks any custom iProperty as a column from the window itself; iProperty columns are **editable** (written back to the part) |
 | B9 | Override | Per row: override the detected type / layout |
 | C10 | Sheet metal, folded | Drawing with **flat pattern + folded views on one sheet** |
 | C10 | Sheet metal, flat (no bends) | Drawing with **flat pattern only** |
@@ -30,8 +30,9 @@ Status: **planning** — nothing is built yet. Items marked ❓ are still open.
 | C12 | Lathe parts | Detected from geometry |
 | C13 | General part | Own layout for parts that are none of the above; plates are always sheet metal, so an extruded plate is General |
 | C14/15 | Other types | No weldments, no other types |
-| D | Layout defaults | All accepted (see §4); **no automatic sheet size** — sheet comes from the template |
-| D20 | Order | Main assembly → sub-assemblies → SM folded → SM flat → lathe → tubes (❓5) |
+| D | Layout defaults | All accepted (see §4); **no automatic sheet size** — sheet comes from the template; **scale auto-detected** from part size |
+| D20 | Sort order | Within each assembly level: sub-assemblies first (deeper levels below), then SM folded → SM flat → lathe → tubes → general; Content Center last |
+| D20 | Parts list | **Only on assembly drawings**, **top level** (that assembly's own level) |
 | E26 | Dimensions v1 | **Overall dimensions** everywhere; flat pattern: **edge → first bend, then bend → bend (chain)**, bend direction up/down + angle |
 | E27 | Hole dimension style | Not now |
 | E28 | Flat pattern extras | Yes: overall + bend positions + thickness/material note |
@@ -64,6 +65,11 @@ Status: **planning** — nothing is built yet. Items marked ❓ are still open.
 
 - Tree = assembly structure, expanded. Each unique file appears where it sits in the structure;
   a file that occurs more than once is generated **once** (dedupe by full path).
+- Sort inside every assembly node: sub-assemblies → SM folded → SM flat → lathe → tubes → general,
+  then by name. Content Center parts are pulled out into one collapsed, unchecked
+  **Content Center** group at the very bottom.
+- iProperty columns (e.g. Aantal) are edited in place; the value is written to the part's custom
+  iProperty and the part is saved with the run (or on "Save properties").
 - Checkbox per row; checking a sub-assembly checks its children (tri-state).
 - **Type** column = detected type, a dropdown to override (B9).
 - **Columns**: fixed (Name, Type, Status, Thumbnail) + configurable iProperty columns
@@ -99,7 +105,7 @@ hole/thread notes on all types, title block filled from iProperties.
 
 | Type | Views | Annotations |
 |---|---|---|
-| **Assembly** | Front, top, side, iso | Parts list + balloons; overall dimensions |
+| **Assembly** | Front, top, side, iso | Parts list (top level of this assembly) + balloons; overall dimensions |
 | **SM folded** | One sheet: flat pattern + front + 1–2 projections + iso | Flat pattern: overall, chain bend dims, bend notes (UP/DOWN, angle, radius); folded views: overall dims; thickness + material note |
 | **SM flat** | Flat pattern only (+ small iso optional ❓) | Overall dims; thickness + material note |
 | **Tube / profile** | Long view (break view when long), cross-section, end-cut detail when mitred | Overall length (cut angles: later) |
@@ -178,17 +184,16 @@ Each milestone is tested in Inventor before the next one starts.
 
 ## 8. Open questions
 
-Answered in round 3: Content Center hidden, chain bend dims, Aantal = custom iProperty column,
-ask on existing drawing, SM folded on one sheet, extruded plate = General, tube angles later.
+Answered in rounds 3–4: chain bend dims, Aantal = editable custom iProperty column, ask once
+per run on existing drawings, SM folded on one sheet, extruded plate = General, tube angles later,
+scale auto, tree sort order, Content Center group at bottom, parts list only on assemblies (top level).
 
-1. **Scale**: the sheet comes from the template. Should AutoDraw still pick the **scale**
-   automatically, or is the scale fixed too (e.g. always 1:1, you rescale by hand)?
-2. **Order (main → sub-assemblies → SM folded → SM flat → lathe → tubes)**: what is it for?
-   a) the order in which the tree is sorted, b) the order of sheets in **one multi-sheet .idw**,
-   or c) the drawing numbering? And does every sub-assembly get its own drawing?
-3. **"Ask" on existing drawing**: one question per run (overwrite all / skip all / ask per file),
-   or a dialog for every existing file?
-4. **Parts list** on assembly drawings: top-level only or all levels?
-5. **Aantal**: read-only in the tree, or editable there (writes the iProperty back to the part)?
-6. Still to answer later: F (template / title block), G (output, naming, PDF/DXF), H (settings
-   location, language), I (users), J (example drawings).
+Still to answer:
+- **F – Template / title block**: path of your .idw template; one template for all types or one
+  per type; which iProperties fill the title block.
+- **G – Output**: save next to the part as `{FileName}.idw`? PDF / DXF export along with it?
+  Leave drawings open or save + close?
+- **H – Settings**: stored per user (`%APPDATA%`) or on the `I:\` share; UI and drawing-note
+  language (English / Dutch).
+- **I – Users**: only you, or colleagues too (installer on the share)?
+- **J – Example drawings**: one existing drawing per type as the reference.
