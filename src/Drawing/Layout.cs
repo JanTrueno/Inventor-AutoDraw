@@ -58,6 +58,7 @@ namespace AutoDraw.Drawing
     internal static class Layout
     {
         private const double Spacing = 1.0;
+        private const double AboveShare = 1.0 / 3;
 
         public static bool Pack(IList<ViewGroup> groups, Region usable, IList<Region> obstacles, double maxScale = 10)
         {
@@ -73,46 +74,55 @@ namespace AutoDraw.Drawing
 
         /// <summary>
         /// Uses the room left over: each group (not the flat pattern) gets more space between its views, up to half the
-        /// free room and at most 10 cm, and is centred in the free span around it, first across, then up and down.
+        /// free room and at most 10 cm; across it is centred in the free span around it, up and down it sits a bit above
+        /// the middle (a third of the free room above it).
         /// </summary>
         public static void Spread(IList<ViewGroup> groups, Region usable, IList<Region> obstacles)
         {
             foreach (ViewGroup g in groups)
             {
                 if (g.Fixed) continue;
-                Region area = g.Area ?? usable;
-                List<Region> others = obstacles.Concat(groups.Where(o => o != g).Select(o => o.Box)).ToList();
-
-                // across: from the nearest thing on the left to the nearest on the right, within the group's height
-                Region b = g.Box;
-                double left = area.X0, right = area.X1;
-                foreach (Region o in others.Where(o => o.Y0 < b.Y1 && b.Y0 < o.Y1))
-                {
-                    if (o.X1 <= b.X0 + 1e-6) left = Math.Max(left, o.X1 + Spacing);
-                    else if (o.X0 >= b.X1 - 1e-6) right = Math.Min(right, o.X0 - Spacing);
-                }
-                double freeX = right - left - b.W;
-                if (freeX > 0.01)
-                {
-                    if (g.HasSide) { g.ExtraX = Math.Min(freeX * 0.5, 10); freeX -= g.ExtraX; }
-                    g.X0 = left + freeX / 2;
-                }
-
-                // up and down: the same within the (new) width
-                b = g.Box;
-                double bottom = area.Y0, top = area.Y1;
-                foreach (Region o in others.Where(o => o.X0 < b.X1 && b.X0 < o.X1))
-                {
-                    if (o.Y1 <= b.Y0 + 1e-6) bottom = Math.Max(bottom, o.Y1 + Spacing);
-                    else if (o.Y0 >= b.Y1 - 1e-6) top = Math.Min(top, o.Y0 - Spacing);
-                }
-                double freeY = top - bottom - b.H;
-                if (freeY > 0.01)
-                {
-                    if (g.HasBelow) { g.ExtraY = Math.Min(freeY * 0.5, 10); freeY -= g.ExtraY; }
-                    g.Y1 = top - freeY / 2;
-                }
+                // centre up and down first: that can lift the group clear of low texts (order number) beside it, which
+                // then no longer limit how far it may spread across
+                SpreadY(g, groups, usable, obstacles, false);
+                SpreadX(g, groups, usable, obstacles);
+                SpreadY(g, groups, usable, obstacles, true);
             }
+        }
+
+        private static List<Region> Others(ViewGroup g, IList<ViewGroup> groups, IList<Region> obstacles) =>
+            obstacles.Concat(groups.Where(o => o != g).Select(o => o.Box)).ToList();
+
+        /// <summary>Across: from the nearest thing on the left to the nearest on the right, within the group's height.</summary>
+        private static void SpreadX(ViewGroup g, IList<ViewGroup> groups, Region usable, IList<Region> obstacles)
+        {
+            Region area = g.Area ?? usable, b = g.Box;
+            double left = area.X0, right = area.X1;
+            foreach (Region o in Others(g, groups, obstacles).Where(o => o.Y0 < b.Y1 && b.Y0 < o.Y1))
+            {
+                if (o.X1 <= b.X0 + 1e-6) left = Math.Max(left, o.X1 + Spacing);
+                else if (o.X0 >= b.X1 - 1e-6) right = Math.Min(right, o.X0 - Spacing);
+            }
+            double free = right - left - b.W;
+            if (free <= 0.01) return;
+            if (g.HasSide) { double add = Math.Min(free * 0.5, 10); g.ExtraX += add; free -= add; }
+            g.X0 = left + free / 2;
+        }
+
+        /// <summary>Up and down: from the nearest thing below to the nearest above, within the group's width.</summary>
+        private static void SpreadY(ViewGroup g, IList<ViewGroup> groups, Region usable, IList<Region> obstacles, bool extra)
+        {
+            Region area = g.Area ?? usable, b = g.Box;
+            double bottom = area.Y0, top = area.Y1;
+            foreach (Region o in Others(g, groups, obstacles).Where(o => o.X0 < b.X1 && b.X0 < o.X1))
+            {
+                if (o.Y1 <= b.Y0 + 1e-6) bottom = Math.Max(bottom, o.Y1 + Spacing);
+                else if (o.Y0 >= b.Y1 - 1e-6) top = Math.Min(top, o.Y0 - Spacing);
+            }
+            double free = top - bottom - b.H;
+            if (free <= 0.01) return;
+            if (extra && g.HasBelow) { double add = Math.Min(free * 0.5, 10); g.ExtraY += add; free -= add; }
+            g.Y1 = top - free * AboveShare;   // a bit above the middle: a third of the room above, two thirds below
         }
 
         private static bool TryAt(IList<ViewGroup> groups, double s, Region usable, IList<Region> obstacles)
