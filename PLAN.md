@@ -1,4 +1,4 @@
-# AutoDraw — Plan (draft 7)
+# AutoDraw — Plan (draft 8)
 
 Inventor 2025 add-in that generates drawings for every part and sub-assembly of the open assembly,
 with a drawing layout per part type and automatic dimensions.
@@ -33,8 +33,13 @@ Status: **planning** — nothing is built yet. Items marked ❓ are still open.
 | D | Layout defaults | All accepted (see §4); **no automatic sheet size** — sheet comes from the template; **scale auto-detected** from part size |
 | D20 | Sort order | Within each assembly level: sub-assemblies first (deeper levels below), then SM folded → SM flat → lathe → tubes → general; Content Center last |
 | D20 | Parts list | **Only on assembly drawings**, **top level** (that assembly's own level) |
-| G1 | Output | **One .idw per main assembly, one sheet per document** (all types get their own sheet), saved next to the main assembly as **`{Ordernummer}_{assembly name}_{date}.idw`** |
-| G2 | Sheet number | AutoDraw **writes the sheet number into each part's custom iProperty `Bewerking`** (format `010`) |
+| G1 | Output | **One .idw per main assembly, one sheet per document** (all types get their own sheet), saved next to the main assembly as **`{ordernummer}_{assembly name}_{date}.idw`**; every run makes a **new** .idw |
+| G1a | Ordernummer | Custom iProperty **`ordernummer`** of the main assembly (same as BlomViewer/STEP Export). Shown **editable** at the top of the window, written back to the assembly. Empty, placeholder `160100` or < 6 digits → refused, like BlomViewer Export |
+| G2 | Sheet number | AutoDraw writes **only the sheet number** (`010`) into each document's custom iProperties **`bewerking`** and **`bewerkingBlad`** (both were written by the old iLogic rules) |
+| G2a | Sheet name | Each sheet is **named after its document** (`lekbak_boven_Z4`, Inventor adds `:10`) — replaces the "Sheets hernoemen" iLogic rule |
+| G2b | Aantal | AutoDraw computes the **total quantity in the main assembly** (nested quantities multiplied) and writes it to custom iProperty **`Aantal`**; shown in the tree, editable before generating. The template header shows `{Aantal}x {name}` |
+| G6 | Export | No PDF/DXF export — done by the existing tools |
+| G7 | UI language | **English** |
 | G3 | Header / sheet no. | Already in the company template — AutoDraw only fills iProperties |
 | G4 | Sheet order | Main assembly → sub-assemblies → SM folded → SM flat → lathe → tubes → general; **alphabetical by name within each type** (no reliance on `_Z`/`_P` suffixes) |
 | G5 | Assembly sheets | Auto by part count: **small** (≤ 15 parts on its own level) = 1 sheet (side views + 1 iso + parts list + balloons); **large** (> 15) = 2 sheets: sheet 1 **iso + parts list + balloons**, sheet 2 **front/top/side, no iso**. Sheet count per assembly can be changed in the tree |
@@ -51,7 +56,9 @@ Status: **planning** — nothing is built yet. Items marked ❓ are still open.
 │ ┌─ Left panel ──────────┐ ┌─ Document tree ──────────────────────────────┐ │
 │ │ Source                │ │ [✓] Name        Type        Aantal  Mat.  St │ │
 │ │  Assembly: X.iam      │ │ ▼[✓] Frame.iam   Assembly     1     -     ●  │ │
-│ │  [Reload]             │ │   ▼[✓] Sub.iam   Assembly     2     -     ●  │ │
+│ │  Ordernummer [______] │ │   ▼[✓] Sub.iam   Assembly     2     -     ●  │ │
+│ │  Template [____][...] │ │                                              │ │
+│ │  [Reload]             │ │                                              │ │
 │ │                       │ │      [✓] Plate   SM flat      4    S235   ●  │ │
 │ │ Layout per type       │ │      [✓] Bracket SM folded    2    S235   ●  │ │
 │ │  Assembly   [▼]       │ │   [✓] Tube 40x2  Tube         6    S235   ●  │ │
@@ -143,7 +150,7 @@ from iProperties by the template.
 | Type | Views | Annotations |
 |---|---|---|
 | **Assembly – small** | 1 sheet: front/top/side + 1 iso | Parts list (top level, bottom right) + balloons on the iso |
-| **Assembly – large** | Sheet 1: iso only; sheet 2: front/top/side, no iso; sheets 3…n (if set by hand): empty ❓ | Sheet 1: parts list + balloons; sheet 2: overall dims |
+| **Assembly – large** | Sheet 1: iso only; sheet 2: front/top/side, no iso; sheets 3…n (if set by hand): **one base view** of the assembly, nothing else | Sheet 1: parts list + balloons; sheet 2: overall dims |
 | **SM folded** | Folded front/top/side centre, iso top right, flat pattern + edge view bottom left | Folded: overall dims, angle dims for non-90° bends. Flat: overall, chain bend dims, bend notes (UP/DOWN, angle, radius) |
 | **SM flat** | Flat pattern + edge view | Overall dims + thickness; hole/thread notes with count |
 | **Tube / profile** | Own sheet: long view (break view when long), cross-section, iso | Overall length (cut angles: later) |
@@ -212,9 +219,9 @@ tests/            Pure-logic tests (sizer, naming, placement math) without Inven
 | **M1 – Skeleton** | Repo, add-in, ribbon button (assembly), empty window with theme |
 | **M2 – Tree** | Load assembly tree, columns incl. Aantal/iProperties, thumbnails, existing-drawing status |
 | **M3 – Detection** | Type detection + override dropdown, test on your assemblies |
-| **M4 – Drawings** | Template, scale search, views per type, title block, save |
+| **M4 – Drawings** | One multi-sheet .idw from the chosen template, sheet order + names, scale search, views per type, parts list + balloons, write `Aantal` / `bewerking` / `bewerkingBlad`, save as `{ordernummer}_{name}_{date}.idw` |
 | **M5 – Dimensions** | Overall dims, flat pattern bend positions + bend notes, thickness/material note |
-| **M6 – Polish** | Cancel, error handling, installer to `I:\Jan Blokstra\software\AutoDraw\` |
+| **M6 – Polish** | Cancel, error handling (installer later) |
 
 Each milestone is tested in Inventor before the next one starts.
 
@@ -233,17 +240,21 @@ Answered in round 6: one .idw per main assembly, every document its own sheet (t
 too), sheet number written to the part, header/sheet number come from the template, chain bend
 dims always, alphabetical per type, assembly sheet count auto + adjustable.
 
-Answered in round 7: file name `{Ordernummer}_{assembly name}_{date}.idw`, sheet number in
-custom iProperty `Bewerking`, large assembly > 15 parts, sheet 2 = side views without iso.
+Answered in rounds 7–8: file name, `ordernummer` editable in the window, `bewerking` =
+sheet number only, sheets 3…n = one base view, re-run = new .idw, no export, English UI,
+sheets named after their document, Aantal = total quantity.
 
-Still to answer:
-1. **Ordernummer**: which iProperty holds it on the main assembly (custom `Ordernummer`, or
-   Project)? Date format: `2026-11-06` or `2026-11-6` like the PDFs?
-2. **Bewerking** already holding text like `010 lasersnijden`: AutoDraw replaces only the leading
-   number and keeps the text after it (proposal) — ok? Parts without text get just `010`.
-3. Sheets 3…n when someone sets more than 2 for an assembly: empty sheets? (proposal: yes)
-4. **Re-running** on an assembly whose .idw already exists (with your hand-made extra sheets):
-   a) make a new .idw next to it, b) overwrite all, or c) keep existing sheets and only **add
-   sheets for new parts** (and renumber)?
-5. PDF / DXF export at the end of the run, or not for now?
-6. UI language: English or Dutch?
+Last confirmations (defaults are used if not answered):
+1. Date in the file name: `2026-11-6` (like the PDFs) — default.
+2. Same file name already exists (second run on the same day): add `_2`, `_3` — default.
+
+---
+
+## 9. Reference iLogic rules (I:\Inventor\CADStandaard\Design Data\External)
+
+Used as behaviour reference only; AutoDraw is written fresh in C#.
+
+| Rule | What it does | In AutoDraw |
+|---|---|---|
+| `Sheets_hernoemen` / `Tek. Nr. naar part_V2` | Ask sheet ranges for Lasersnijden / Verspanen / Lassamenstelling, take the number from the sheet name (`:10` → `010`) and write `NNN Lasersnijden` etc. into `bewerking` + `bewerkingBlad` of the referenced model (for Frame Generator assemblies: into every member part) | AutoDraw knows the sheet number itself and writes only `NNN`; no range dialogs; sheets named after their document |
+| `AutoDimensionV13` | First view on the sheet: Retrieve model dims, overall X/Y from the extreme line curves, Ø on every circle | Same overall-extremes idea in `OverallDims`, but per view and type, with placement outside the view; no Retrieve and no Ø on every hole in v1 |
