@@ -1,4 +1,4 @@
-# AutoDraw — Plan (draft 2)
+# AutoDraw — Plan (draft 3)
 
 Inventor 2025 add-in that generates drawings for every part and sub-assembly of the open assembly,
 with a drawing layout per part type and automatic dimensions.
@@ -20,17 +20,19 @@ Status: **planning** — nothing is built yet. Items marked ❓ are still open.
 | A3 | Window | Full, separate, non-modal window (second monitor ok), remembers size/position, maximisable |
 | A4 | Start | Loads the active assembly's full structure immediately |
 | B5 | List | **Tree** (assembly structure), **fully expanded** by default |
-| B6 | Auto-exclusion | Not needed — no automatic filtering (see ❓1) |
-| B8 | Columns | Configurable; includes **Aantal** and any configurable iProperty columns |
+| B6 | Content Center | **Hidden by default** (toggle "Show Content Center"); no other auto-exclusion |
+| B7 | Existing drawing | **Ask** when a drawing already exists |
+| B8 | Columns | Configurable; **Aantal** is a custom iProperty — user picks any custom iProperty as a column from the window itself |
 | B9 | Override | Per row: override the detected type / layout |
-| C10 | Sheet metal, folded | Drawing with **flat pattern + folded views** |
+| C10 | Sheet metal, folded | Drawing with **flat pattern + folded views on one sheet** |
 | C10 | Sheet metal, flat (no bends) | Drawing with **flat pattern only** |
 | C11 | Tubes/profiles | Mostly Frame Generator, not always → detect FG first, geometry as fallback |
 | C12 | Lathe parts | Detected from geometry |
-| C13 | General part | Own layout for parts that are none of the above |
+| C13 | General part | Own layout for parts that are none of the above; plates are always sheet metal, so an extruded plate is General |
 | C14/15 | Other types | No weldments, no other types |
-| D | Layout defaults | All accepted (see §4) |
-| E26 | Dimensions v1 | **Overall dimensions** everywhere; flat pattern: **edge → bend line distances, bend direction up/down + angle** |
+| D | Layout defaults | All accepted (see §4); **no automatic sheet size** — sheet comes from the template |
+| D20 | Order | Main assembly → sub-assemblies → SM folded → SM flat → lathe → tubes (❓5) |
+| E26 | Dimensions v1 | **Overall dimensions** everywhere; flat pattern: **edge → first bend, then bend → bend (chain)**, bend direction up/down + angle |
 | E27 | Hole dimension style | Not now |
 | E28 | Flat pattern extras | Yes: overall + bend positions + thickness/material note |
 
@@ -91,24 +93,24 @@ Run once per unique document when the tree loads; result is cached and overridab
 
 ## 4. Layout per type (v1)
 
-Common: **first-angle (ISO-E)**, mm, **auto sheet size** (A4 → A3 → A2 → A1: smallest that fits at
-a standard scale), **ISO standard scales** (…1:10, 1:5, 1:2, 1:1, 2:1, 5:1…), **iso view top right,
-shaded**, hole/thread notes on all types, title block filled from iProperties.
+Common: **first-angle (ISO-E)**, mm, **sheet size from the template** (not changed by AutoDraw),
+**ISO standard scales** (…1:10, 1:5, 1:2, 1:1, 2:1, 5:1…), **iso view top right, shaded**,
+hole/thread notes on all types, title block filled from iProperties.
 
 | Type | Views | Annotations |
 |---|---|---|
 | **Assembly** | Front, top, side, iso | Parts list + balloons; overall dimensions |
-| **SM folded** | Flat pattern + front + 1–2 projections + iso | Flat pattern: overall, edge→bend line dims, bend notes (UP/DOWN, angle, radius); folded views: overall dims; thickness + material note |
+| **SM folded** | One sheet: flat pattern + front + 1–2 projections + iso | Flat pattern: overall, chain bend dims, bend notes (UP/DOWN, angle, radius); folded views: overall dims; thickness + material note |
 | **SM flat** | Flat pattern only (+ small iso optional ❓) | Overall dims; thickness + material note |
-| **Tube / profile** | Long view (break view when long), cross-section, end-cut detail when mitred | Overall length; cut angles ❓(v1 or v2) |
+| **Tube / profile** | Long view (break view when long), cross-section, end-cut detail when mitred | Overall length (cut angles: later) |
 | **Lathe** | Side view with axis horizontal, half section, details for grooves/threads | Overall length + max Ø |
 | **General** | Front, top, side, iso | Overall dimensions |
 
-### Sheet size / scale algorithm
+### Scale algorithm (sheet is fixed by the template)
 1. Compute the views' model extents for the chosen view set.
-2. For each sheet size (smallest first) and each standard scale (largest first): try the layout;
-   accept the first combination where all views + spacing fit outside the title block zone.
-3. Fallback: largest sheet, smallest scale, warn in Status.
+2. Try standard scales from largest to smallest; accept the first where all views + dimension
+   space fit on the template's sheet outside the title block zone.
+3. Fallback: smallest scale, warn in Status.
 
 ---
 
@@ -122,8 +124,8 @@ shaded**, hole/thread notes on all types, title block filled from iProperties.
 
 ### 5.2 Flat pattern (SM folded)
 - Overall width + height of the flat.
-- **Bend line positions**: for each direction (horizontal / vertical bend lines), dimension from
-  the reference flat edge to each bend line — **baseline or chain** ❓2.
+- **Bend line positions, chain**: for each direction (horizontal / vertical bend lines), one
+  dimension chain: flat edge → first bend line → next bend line → … → opposite flat edge.
 - **Bend notes** on every bend line: direction **UP/DOWN**, angle, inner radius
   (Inventor bend notes, style from template).
 - Bends that are not parallel to an edge: note only, no position dimension (v1).
@@ -166,7 +168,7 @@ tests/            Pure-logic tests (sizer, naming, placement math) without Inven
 | **M1 – Skeleton** | Repo, add-in, ribbon button (assembly), empty window with theme |
 | **M2 – Tree** | Load assembly tree, columns incl. Aantal/iProperties, thumbnails, existing-drawing status |
 | **M3 – Detection** | Type detection + override dropdown, test on your assemblies |
-| **M4 – Drawings** | Template, sheet size/scale search, views per type, title block, save |
+| **M4 – Drawings** | Template, scale search, views per type, title block, save |
 | **M5 – Dimensions** | Overall dims, flat pattern bend positions + bend notes, thickness/material note |
 | **M6 – Polish** | Cancel, error handling, installer to `I:\Jan Blokstra\software\AutoDraw\` |
 
@@ -176,18 +178,17 @@ Each milestone is tested in Inventor before the next one starts.
 
 ## 8. Open questions
 
-1. **B6 auto-exclusion "no need"**: should Content Center bolts/nuts still show up in the tree
-   **unchecked** by default, or checked like everything else?
-2. **Flat pattern bend dims**: **chain** (bend → bend) or **baseline** (all from one edge)?
-   Which edge is the reference: left/bottom?
-3. **Aantal**: is it a custom iProperty you fill in, or should AutoDraw compute it from the BOM
-   quantity (and maybe write it to the iProperty)?
-4. **Existing drawing** found: skip, overwrite, or ask per run? (Default proposal: skip, with an
-   "overwrite" checkbox.)
-5. **Sub-assemblies**: own drawing each (yes by default)? Parts list top-level only or all levels?
-6. **SM folded**: one sheet with flat + folded views, or flat on sheet 1 and folded on sheet 2?
-7. **Flat sheets** that are not modelled as sheet metal (extruded plate): treat as General, or
-   detect "plate" and give it the flat layout?
-8. Tube cut angles: v1 or v2?
-9. Still to answer later: F (template / title block), G (output, naming, PDF/DXF), H (settings
+Answered in round 3: Content Center hidden, chain bend dims, Aantal = custom iProperty column,
+ask on existing drawing, SM folded on one sheet, extruded plate = General, tube angles later.
+
+1. **Scale**: the sheet comes from the template. Should AutoDraw still pick the **scale**
+   automatically, or is the scale fixed too (e.g. always 1:1, you rescale by hand)?
+2. **Order (main → sub-assemblies → SM folded → SM flat → lathe → tubes)**: what is it for?
+   a) the order in which the tree is sorted, b) the order of sheets in **one multi-sheet .idw**,
+   or c) the drawing numbering? And does every sub-assembly get its own drawing?
+3. **"Ask" on existing drawing**: one question per run (overwrite all / skip all / ask per file),
+   or a dialog for every existing file?
+4. **Parts list** on assembly drawings: top-level only or all levels?
+5. **Aantal**: read-only in the tree, or editable there (writes the iProperty back to the part)?
+6. Still to answer later: F (template / title block), G (output, naming, PDF/DXF), H (settings
    location, language), I (users), J (example drawings).
