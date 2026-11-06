@@ -88,6 +88,14 @@ internal static class CoreTests
         Check("tank ortho scale at least 1:8", ortho.Scale >= 1 / 8.0 - 1e-9, "1:" + (1 / ortho.Scale).ToString("0.#"));
         Check("groups do not overlap", !ortho.Box.Overlaps(iso.Box));
         Check("nothing on the title block", obstacles.All(o => !o.Overlaps(ortho.Box) && !o.Overlaps(iso.Box)));
+        Check("top view above the base view", ortho.BelowCY > ortho.BaseCY && Math.Abs(ortho.BaseCX - (ortho.Box.X0 + ortho.MarginL + 51.6 * ortho.Scale + ortho.Gap + 148 * ortho.Scale / 2)) < 1e-6);
+        Check("side view left of the base view", ortho.SideCX < ortho.BaseCX);
+        var flatG = new ViewGroup { BW = 100, BH = 30, EdgeW = 0.2, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
+        var isoF = new ViewGroup { BW = 40, BH = 40, Prefer = Corner.TopRight, Flexible = true };
+        var orthoF = new ViewGroup { BW = 60, BH = 100, BelowH = 30, SideW = 30 };
+        Layout.Pack(new List<ViewGroup> { flatG, isoF, orthoF }, usable, obstacles);
+        Check("flat pattern bottom left", Math.Abs(flatG.Box.X0 - usable.X0) < 1e-6 && Math.Abs(flatG.Box.Y0 - usable.Y0) < 1e-6);
+        Check("edge view right of the flat pattern", flatG.EdgeCX > flatG.BaseCX);
         Check("inside the sheet", ortho.Box.X0 >= usable.X0 && ortho.Box.Y0 >= usable.Y0 && iso.Box.X1 <= usable.X1 + 1e-6 && iso.Box.Y1 <= usable.Y1 + 1e-6);
 
         var plate = new ViewGroup { BW = 68, BH = 8, SideW = 1.5, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };

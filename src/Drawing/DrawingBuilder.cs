@@ -157,8 +157,7 @@ namespace AutoDraw.Drawing
                 {
                     if (j.Node.Doc is PartDocument p && p.ComponentDefinition is SheetMetalComponentDefinition sm && !sm.HasFlatPattern)
                     {
-                        sm.Unfold();
-                        try { sm.FlatPattern.ExitEdit(); } catch { }
+                        CreateFlatPatternAndFlip(p, sm);
                         changed.Add(j.Node.Doc);
                     }
                 }
@@ -181,6 +180,32 @@ namespace AutoDraw.Drawing
                 }
             }
             finally { _app.SilentOperation = silent; }
+        }
+
+        /// <summary>
+        /// As the company's Create_Flatpattern_andflip macro: unfold, then flip the base face so the flat pattern is seen
+        /// from the other side. Unfolding a part that is not open in a window can fail; it is then opened, unfolded and
+        /// its window closed again.
+        /// </summary>
+        private void CreateFlatPatternAndFlip(PartDocument part, SheetMetalComponentDefinition sm)
+        {
+            View opened = null;
+            try
+            {
+                try { sm.Unfold(); }
+                catch
+                {
+                    _app.Documents.Open(((Document)part).FullFileName, true);
+                    try { opened = _app.ActiveView; } catch { }
+                    sm.Unfold();
+                }
+                try { sm.FlatPattern.FlipBaseFace(); } catch (Exception ex) { Log.Write("Flipping the flat pattern failed: " + ex.Message); }
+                try { sm.FlatPattern.ExitEdit(); } catch { }
+            }
+            finally
+            {
+                if (opened != null) { try { opened.Close(); } catch { } }
+            }
         }
 
         // ----- sheets -----------------------------------------------------------------------------------------------
@@ -239,8 +264,9 @@ namespace AutoDraw.Drawing
             Views v = CreateOrtho(sheet, f, doc, Choose(DocKind.Assembly, doc), true, true);
             DrawingView iso = CreateIso(sheet, f, doc);
             PartsList list = AssemblyNotes.AddPartsList(_app, sheet, v.Base, f);
-            ViewGroup og = Measure(v, Corner.TopLeft), ig = MeasureSingle(iso, Corner.TopRight, 3.0, true);
-            Arrange(f, WithPartsList(f, list), (og, v), (ig, Views.Of(iso)));
+            ViewGroup ig = MeasureSingle(iso, Corner.BottomRight, 3.0, true);
+            ig.Area = AbovePartsList(f, list);
+            Arrange(f, WithPartsList(f, list), (ig, Views.Of(iso)), (Measure(v, Corner.TopLeft), v));
             AssemblyNotes.AddBalloons(_app, sheet, iso, asm);
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, true);
@@ -251,7 +277,9 @@ namespace AutoDraw.Drawing
         {
             DrawingView iso = CreateIso(sheet, f, (Document)asm);
             PartsList list = AssemblyNotes.AddPartsList(_app, sheet, iso, f);
-            Arrange(f, WithPartsList(f, list), (MeasureSingle(iso, Corner.TopLeft, 3.0, false), Views.Of(iso)));
+            ViewGroup ig = MeasureSingle(iso, Corner.BottomRight, 3.0, false);
+            ig.Area = AbovePartsList(f, list);
+            Arrange(f, WithPartsList(f, list), (ig, Views.Of(iso)));
             AssemblyNotes.AddBalloons(_app, sheet, iso, asm);
         }
 
@@ -275,22 +303,29 @@ namespace AutoDraw.Drawing
             Views v = CreateOrtho(sheet, f, doc, Choose(DocKind.SheetMetalFolded, doc), true, true);
             DrawingView iso = CreateIso(sheet, f, doc);
             Views flat = CreateFlat(sheet, f, doc);
-            var groups = new List<(ViewGroup, Views)> { (Measure(v, Corner.TopLeft), v) };
+            TangentEdges(v.Base, v.Below, v.Side, iso);
+            var groups = new List<(ViewGroup, Views)>();
             if (flat != null) groups.Add((MeasureFlat(flat), flat));
             groups.Add((MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
+            groups.Add((Measure(v, Corner.TopLeft), v));
             Arrange(f, f.Obstacles, groups.ToArray());
 
+            // the view that shows the bends as arcs is the profile: leg lengths and angles there, outside sizes everywhere
             var d = new Dimensioner(_app, sheet);
-            d.Overall(v.Base, true, true);
-            if (v.Below != null) d.Overall(v.Below, false, true);
-            if (v.Side != null) d.Overall(v.Side, true, false);
-            foreach (DrawingView view in new[] { v.Base, v.Below, v.Side }.Where(x => x != null)) d.Angles(view);
+            DrawingView[] folded = new[] { v.Base, v.Below, v.Side }.Where(x => x != null).ToArray();
+            DrawingView profile = folded.OrderByDescending(Dimensioner.ArcCount).First();
+            d.Overall(v.Base, true, true, v.Base == profile ? 1 : 0);
+            if (v.Below != null) d.Overall(v.Below, false, true, v.Below == profile ? 1 : 0);
+            if (v.Side != null) d.Overall(v.Side, true, false, v.Side == profile ? 1 : 0);
+            d.Legs(profile);
+            foreach (DrawingView view in folded) d.Angles(view);
             if (flat != null) FlatDimensions(d, flat);
         }
 
         private void Flat(Sheet sheet, SheetFrame f, Document doc)
         {
             Views flat = CreateFlat(sheet, f, doc) ?? throw new InvalidOperationException("No flat view.");
+            TangentEdges(flat.Base, flat.Side);
             Arrange(f, f.Obstacles, (MeasureFlat(flat, Corner.TopLeft), flat));
             FlatDimensions(new Dimensioner(_app, sheet), flat);
         }
@@ -365,9 +400,34 @@ namespace AutoDraw.Drawing
         /// <summary>The flat pattern with its edge view: room around it for the overall and bend chain dimensions.</summary>
         private static ViewGroup MeasureFlat(Views flat, Corner prefer = Corner.BottomLeft)
         {
-            ViewGroup g = Measure(flat, prefer);
+            // the edge view goes right of the flat pattern (not left, like the side view of the folded views)
+            double s = flat.Base.Scale;
+            var g = new ViewGroup { BW = flat.Base.Width / s, BH = flat.Base.Height / s, Prefer = prefer, Fixed = prefer == Corner.BottomLeft };
+            g.EdgeW = flat.Side != null ? flat.Side.Width / s : 0;
             g.MarginT = 3.2; g.MarginL = 3.2; g.MarginB = 2.5; g.MarginR = 0.5; g.Gap = 4.0;
             return g;
+        }
+
+        /// <summary>Above the parts list, from its left edge to the right of the usable area.</summary>
+        private static Region? AbovePartsList(SheetFrame f, PartsList list)
+        {
+            try
+            {
+                Box2d rb = list.RangeBox;
+                var r = new Region(Math.Max(f.Usable.X0, rb.MinPoint.X - 1.0), rb.MaxPoint.Y + 0.5, f.Usable.X1, f.Usable.Y1);
+                return r.H > 5 && r.W > 5 ? r : (Region?)null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Shows tangent edges (bend edges of sheet metal), as the company drawings do.</summary>
+        private static void TangentEdges(params DrawingView[] views)
+        {
+            foreach (DrawingView v in views)
+            {
+                if (v == null) continue;
+                try { v.DisplayTangentEdges = true; } catch { }
+            }
         }
 
         /// <summary>The title block, plus the parts list (from its left edge to the right side of the sheet).</summary>
@@ -394,7 +454,7 @@ namespace AutoDraw.Drawing
                 catch (Exception ex) { Log.Write("Setting the scale failed: " + ex.Message); }
                 try { v.Base.Center = P(g.BaseCX, g.BaseCY); } catch (Exception ex) { Log.Write("Moving a view failed: " + ex.Message); }
                 if (v.Below != null) { try { v.Below.Center = P(g.BaseCX, g.BelowCY); } catch { } }
-                if (v.Side != null) { try { v.Side.Center = P(g.SideCX, g.BaseCY); } catch { } }
+                if (v.Side != null) { try { v.Side.Center = P(g.EdgeW > 0 ? g.EdgeCX : g.SideCX, g.BaseCY); } catch { } }
             }
         }
 

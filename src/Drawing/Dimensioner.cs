@@ -32,6 +32,7 @@ namespace AutoDraw.Drawing
             public DrawingCurve C;
             public Curve2dTypeEnum Type;
             public DrawingEdgeTypeEnum Edge;
+            public bool Visible = true;      // at least one segment drawn as a visible line (not hidden, not behind another edge)
             public double MinX, MinY, MaxX, MaxY;
             public double SX, SY, EX, EY;
             public bool IsLine => Type == Curve2dTypeEnum.kLineSegmentCurve2d || Type == Curve2dTypeEnum.kLineCurve2d;
@@ -50,6 +51,13 @@ namespace AutoDraw.Drawing
                 {
                     var k = new Curve { C = c, Type = c.ProjectedCurveType };
                     try { k.Edge = c.EdgeType; } catch { k.Edge = DrawingEdgeTypeEnum.kUnknownEdge; }
+                    try
+                    {
+                        bool any = false;
+                        foreach (DrawingCurveSegment seg in c.Segments) if (seg.Visible && !seg.HiddenLine) { any = true; break; }
+                        k.Visible = any;
+                    }
+                    catch { }
                     Box2d rb = c.Evaluator2D.RangeBox;
                     k.MinX = rb.MinPoint.X; k.MinY = rb.MinPoint.Y; k.MaxX = rb.MaxPoint.X; k.MaxY = rb.MaxPoint.Y;
                     if (k.IsLine || k.Type == Curve2dTypeEnum.kCircularArcCurve2d)
@@ -65,7 +73,7 @@ namespace AutoDraw.Drawing
         }
 
         private static bool IsOutline(Curve k) =>
-            !k.IsBend && k.Edge != DrawingEdgeTypeEnum.kBendExtentEdge && k.Edge != DrawingEdgeTypeEnum.kThreadEdge &&
+            k.Visible && !k.IsBend && k.Edge != DrawingEdgeTypeEnum.kBendExtentEdge && k.Edge != DrawingEdgeTypeEnum.kThreadEdge &&
             k.Edge != DrawingEdgeTypeEnum.kTangentEdge;
 
         private enum Side { Left, Right, Bottom, Top }
@@ -271,6 +279,94 @@ namespace AutoDraw.Drawing
             return null;
         }
 
+        /// <summary>The number of visible arcs in a view: the folded view showing the bends as arcs is the profile view.</summary>
+        public static int ArcCount(DrawingView view) => Read(view).Count(k => k.Visible && k.Type == Curve2dTypeEnum.kCircularArcCurve2d);
+
+        /// <summary>
+        /// Leg lengths in the profile view of a folded part: each outside edge of a leg gets an aligned dimension, measured
+        /// to the virtual sharp (where it meets the outside edge of the next leg) or to its free end, placed outside.
+        /// </summary>
+        public void Legs(DrawingView view, int max = 12)
+        {
+            List<Curve> all = Read(view).Where(k => k.IsLine && IsOutline(k)).ToList();
+            double diag = Math.Sqrt(view.Width * view.Width + view.Height * view.Height);
+            double minLen = Math.Max(0.3, diag * 0.04);
+            var lines = all.Where(k => Len(k) >= minLen).ToList();
+            if (lines.Count < 2) return;
+
+            // the middle of the profile, weighted by edge length
+            double tw = lines.Sum(Len), cx = lines.Sum(k => (k.SX + k.EX) / 2 * Len(k)) / tw, cy = lines.Sum(k => (k.SY + k.EY) / 2 * Len(k)) / tw;
+
+            // of each inside/outside pair (parallel, a sheet thickness apart, side by side) keep the outside one
+            var inner = new HashSet<Curve>();
+            foreach (Curve a in lines)
+                foreach (Curve b in lines)
+                {
+                    if (a == b || inner.Contains(a) || inner.Contains(b)) continue;
+                    if (AngleBetween(Dir(a), Dir(b)) > 0.5 * Math.PI / 180) continue;
+                    double gap = LineDistance(a, (b.SX + b.EX) / 2, (b.SY + b.EY) / 2);
+                    if (gap < 0.003 || gap > Math.Max(0.6, diag * 0.03) || !Overlap(a, b)) continue;
+                    double da = LineDistance(a, cx, cy), db = LineDistance(b, cx, cy);
+                    inner.Add(da >= db ? b : a);
+                }
+            List<Curve> outer = lines.Where(k => !inner.Contains(k)).OrderByDescending(Len).Take(max).ToList();
+            double reach = Math.Max(1.5, diag * 0.1);
+
+            foreach (Curve o in outer)
+            {
+                GeometryIntent a = End(o, true, outer, reach), b = End(o, false, outer, reach);
+                // outside: from the middle of the edge, away from the middle of the profile
+                double mx = (o.SX + o.EX) / 2, my = (o.SY + o.EY) / 2, l = Len(o);
+                double nx = -(o.EY - o.SY) / l, ny = (o.EX - o.SX) / l;
+                if ((mx - cx) * nx + (my - cy) * ny < 0) { nx = -nx; ny = -ny; }
+                Point2d text = _tg.CreatePoint2d(mx + nx * 1.0, my + ny * 1.0);
+                DimensionTypeEnum type = Math.Abs(o.SY - o.EY) < 1e-4 ? DimensionTypeEnum.kHorizontalDimensionType
+                    : Math.Abs(o.SX - o.EX) < 1e-4 ? DimensionTypeEnum.kVerticalDimensionType : DimensionTypeEnum.kAlignedDimensionType;
+                Linear(text, a, b, type);
+            }
+        }
+
+        /// <summary>The end of a leg: the virtual sharp with the leg next to it, else the end point itself.</summary>
+        private GeometryIntent End(Curve o, bool start, List<Curve> outer, double reach)
+        {
+            double px = start ? o.SX : o.EX, py = start ? o.SY : o.EY;
+            Curve next = null;
+            double best = reach;
+            foreach (Curve n in outer)
+            {
+                if (n == o || AngleBetween(Dir(n), Dir(o)) < 1 * Math.PI / 180) continue;
+                double d = Math.Min(Dist(px, py, n.SX, n.SY), Dist(px, py, n.EX, n.EY));
+                if (d < best) { best = d; next = n; }
+            }
+            if (next != null)
+            {
+                try { return _sheet.CreateGeometryIntent(o.C, next.C); }   // the intersection of the two edges
+                catch (Exception ex) { Log.Write("Virtual sharp failed: " + ex.Message); }
+            }
+            return _sheet.CreateGeometryIntent(o.C, start ? PointIntentEnum.kStartPointIntent : PointIntentEnum.kEndPointIntent);
+        }
+
+        private static double Len(Curve k) => Dist(k.SX, k.SY, k.EX, k.EY);
+        private static double Dist(double ax, double ay, double bx, double by) => Math.Sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by));
+        private static double Dir(Curve k) => Norm(Math.Atan2(k.EY - k.SY, k.EX - k.SX));
+
+        /// <summary>Distance from a point to the (endless) line through an edge.</summary>
+        private static double LineDistance(Curve k, double px, double py)
+        {
+            double l = Len(k);
+            return l < 1e-9 ? Dist(k.SX, k.SY, px, py) : Math.Abs((k.EX - k.SX) * (k.SY - py) - (k.SX - px) * (k.EY - k.SY)) / l;
+        }
+
+        /// <summary>Do two parallel edges lie side by side (their projections on the direction overlap)?</summary>
+        private static bool Overlap(Curve a, Curve b)
+        {
+            double l = Len(a);
+            if (l < 1e-9) return false;
+            double ux = (a.EX - a.SX) / l, uy = (a.EY - a.SY) / l;
+            double t1 = (b.SX - a.SX) * ux + (b.SY - a.SY) * uy, t2 = (b.EX - a.SX) * ux + (b.EY - a.SY) * uy;
+            return Math.Max(t1, t2) > 0 && Math.Min(t1, t2) < l;
+        }
+
         /// <summary>Puts a Ø in front of the dimension value (diameters of lathe parts and round tubes).</summary>
         public static void Diameter(LinearGeneralDimension d)
         {
@@ -284,7 +380,7 @@ namespace AutoDraw.Drawing
         public void FlatPattern(DrawingView view)
         {
             List<Curve> curves = Read(view);
-            List<Curve> bends = curves.Where(k => k.IsBend && k.IsLine).ToList();
+            List<Curve> bends = curves.Where(k => k.IsBend && k.IsLine && k.Visible).ToList();
             var box = Box(view);
             const double same = 0.005;
 

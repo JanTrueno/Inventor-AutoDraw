@@ -8,18 +8,21 @@ namespace AutoDraw.Drawing
     internal enum Corner { TopLeft, TopRight, BottomLeft, BottomRight }
 
     /// <summary>
-    /// Views that stay together on the sheet, as one box: a base view with optionally a projected view below it (first
-    /// angle: the top view) and one to its right, or a single view. Sizes are model sizes (cm at 1:1); margins and gaps
+    /// Views that stay together on the sheet, as one box: a base view with optionally its top view placed above it and
+    /// its side view placed to its left (the company layout), or a single view. Sizes are model sizes (cm at 1:1); margins and gaps
     /// are sheet centimetres kept free for dimensions.
     /// </summary>
     internal sealed class ViewGroup
     {
         public double BW, BH;          // base view
-        public double BelowH;          // height of the view below (its width is BW); 0 = none
-        public double SideW;           // width of the view to the right (its height is BH); 0 = none
+        public double BelowH;          // height of the top view, placed above the base view (its width is BW); 0 = none
+        public double SideW;           // width of the side view, placed left of the base view (its height is BH); 0 = none
         public double MarginL = 2.5, MarginR = 0.5, MarginT = 2.5, MarginB = 0.5, Gap = 3.0;
         public Corner Prefer = Corner.TopLeft;
         public bool Flexible;          // may get a smaller scale than the other groups (iso views)
+        public double EdgeW;           // width of an edge view placed RIGHT of the base view (flat pattern thickness); 0 = none
+        public bool Fixed;             // only at its preferred corner (the flat pattern: always bottom left)
+        public Region? Area;           // keep inside this area instead of the whole usable area (iso above the parts list)
 
         public double Scale;           // result
         public double X0, Y1;          // result: top-left corner of the box
@@ -28,13 +31,16 @@ namespace AutoDraw.Drawing
         public bool HasSide => SideW > 1e-6;
 
         public (double W, double H) Size(double s) => (
-            MarginL + BW * s + (HasSide ? Gap + SideW * s : 0) + MarginR,
+            MarginL + BW * s + (HasSide ? Gap + SideW * s : 0) + (EdgeW > 1e-6 ? Gap + EdgeW * s : 0) + MarginR,
             MarginT + BH * s + (HasBelow ? Gap + BelowH * s : 0) + MarginB);
 
-        public double BaseCX => X0 + MarginL + BW * Scale / 2;
-        public double BaseCY => Y1 - MarginT - BH * Scale / 2;
-        public double BelowCY => Y1 - MarginT - BH * Scale - Gap - BelowH * Scale / 2;
-        public double SideCX => X0 + MarginL + BW * Scale + Gap + SideW * Scale / 2;
+        private double BaseLeft => X0 + MarginL + (HasSide ? SideW * Scale + Gap : 0);
+        private double BaseTop => Y1 - MarginT - (HasBelow ? BelowH * Scale + Gap : 0);
+        public double BaseCX => BaseLeft + BW * Scale / 2;
+        public double BaseCY => BaseTop - BH * Scale / 2;
+        public double BelowCY => Y1 - MarginT - BelowH * Scale / 2;     // the top view, above the base view
+        public double SideCX => X0 + MarginL + SideW * Scale / 2;        // the side view, left of the base view
+        public double EdgeCX => BaseLeft + BW * Scale + Gap + EdgeW * Scale / 2;   // the edge view, right of the base view
 
         public Region Box => new Region(X0, Y1 - Size(Scale).H, X0 + Size(Scale).W, Y1);
     }
@@ -69,14 +75,17 @@ namespace AutoDraw.Drawing
                 IEnumerable<double> scales = g.Flexible
                     ? new[] { s, Scales.Below(s), Scales.Below(Scales.Below(s)) }
                     : new[] { s };
+                Region area = g.Area ?? usable;
                 foreach (double gs in scales)
                 {
                     (double w, double h) = g.Size(gs);
-                    if (w > usable.W || h > usable.H) continue;
-                    foreach ((double x0, double y1) in Candidates(usable, placed, w, h, g.Prefer))
+                    if (w > area.W || h > area.H) continue;
+                    IEnumerable<(double X0, double Y1)> spots = Candidates(area, placed, w, h, g.Prefer);
+                    if (g.Fixed) spots = spots.Take(1);
+                    foreach ((double x0, double y1) in spots)
                     {
                         var r = new Region(x0, y1 - h, x0 + w, y1);
-                        if (r.X0 < usable.X0 - 1e-6 || r.X1 > usable.X1 + 1e-6 || r.Y0 < usable.Y0 - 1e-6 || r.Y1 > usable.Y1 + 1e-6) continue;
+                        if (r.X0 < area.X0 - 1e-6 || r.X1 > area.X1 + 1e-6 || r.Y0 < area.Y0 - 1e-6 || r.Y1 > area.Y1 + 1e-6) continue;
                         if (obstacles.Any(o => r.Overlaps(o)) || placed.Any(p => r.Overlaps(p))) continue;
                         g.Scale = gs; g.X0 = x0; g.Y1 = y1;
                         placed.Add(r);

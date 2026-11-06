@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Inventor;
 
 namespace AutoDraw.Drawing
@@ -86,18 +87,21 @@ namespace AutoDraw.Drawing
             {
                 TitleBlock tb = sheet.TitleBlock;
                 if (tb == null) return null;
-                var pts = new List<(double X, double Y)>();
+                var lines = new List<(double X1, double Y1, double X2, double Y2)>();
                 foreach (SketchLine l in tb.Definition.Sketch.SketchLines)
                 {
                     Point2d a = l.StartSketchPoint.Geometry, b = l.EndSketchPoint.Geometry;
-                    pts.Add((a.X, a.Y)); pts.Add((b.X, b.Y));
+                    lines.Add((a.X, a.Y, b.X, b.Y));
                 }
-                if (pts.Count < 4) return null;
-                double maxX = double.MinValue, minY = double.MaxValue;
-                foreach (var p in pts) { if (p.X > maxX) maxX = p.X; if (p.Y < minY) minY = p.Y; }
+                if (lines.Count < 2) return null;
+                double maxX = lines.Max(l => Math.Max(l.X1, l.X2)), minY = lines.Min(l => Math.Min(l.Y1, l.Y2));
+                // the highest horizontal line that reaches the right-hand edge is the top of the block there
                 double topRight = double.MinValue;
-                foreach (var p in pts) if (Math.Abs(p.X - maxX) < 0.05 && p.Y > topRight) topRight = p.Y;
+                foreach (var l in lines)
+                    if (Math.Abs(l.Y1 - l.Y2) < 1e-4 && Math.Abs(Math.Max(l.X1, l.X2) - maxX) < 0.05 && l.Y1 > topRight) topRight = l.Y1;
+                if (topRight == double.MinValue) return null;
                 double top = borderBottom + (topRight - minY);
+                Core.Log.Write(string.Format("Title block top at the right edge: {0:0.00} cm (block height {1:0.00} cm)", top, topRight - minY));
                 return top > 0.05 * H && top < 0.4 * H ? top : (double?)null;
             }
             catch (Exception ex)
