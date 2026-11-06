@@ -1,4 +1,4 @@
-# AutoDraw — Plan (draft 5)
+# AutoDraw — Plan (draft 6)
 
 Inventor 2025 add-in that generates drawings for every part and sub-assembly of the open assembly,
 with a drawing layout per part type and automatic dimensions.
@@ -21,7 +21,7 @@ Status: **planning** — nothing is built yet. Items marked ❓ are still open.
 | A4 | Start | Loads the active assembly's full structure immediately |
 | B5 | List | **Tree** (assembly structure), **fully expanded** by default, sorted top-down (see §2) |
 | B6 | Content Center | Separate **"Content Center" group at the bottom, collapsed** and unchecked |
-| B7 | Existing drawing | **Ask once per run** (overwrite all / skip all) when one or more .idw files exist |
+| B7 | Existing drawing | **Ask once** when the assembly's .idw already exists (options: see §8 question 4) |
 | B8 | Columns | Configurable; **Aantal** is a custom iProperty — user picks any custom iProperty as a column from the window itself; iProperty columns are **editable** (written back to the part) |
 | B9 | Override | Per row: override the detected type / layout |
 | C10 | Sheet metal, folded | Drawing with **flat pattern + folded views on one sheet** |
@@ -33,6 +33,11 @@ Status: **planning** — nothing is built yet. Items marked ❓ are still open.
 | D | Layout defaults | All accepted (see §4); **no automatic sheet size** — sheet comes from the template; **scale auto-detected** from part size |
 | D20 | Sort order | Within each assembly level: sub-assemblies first (deeper levels below), then SM folded → SM flat → lathe → tubes → general; Content Center last |
 | D20 | Parts list | **Only on assembly drawings**, **top level** (that assembly's own level) |
+| G1 | Output | **One .idw per main assembly, one sheet per document** (all types get their own sheet) |
+| G2 | Sheet number | AutoDraw **writes the sheet number into each part's iProperty** (format `010`) |
+| G3 | Header / sheet no. | Already in the company template — AutoDraw only fills iProperties |
+| G4 | Sheet order | Main assembly → sub-assemblies → SM folded → SM flat → lathe → tubes → general; **alphabetical by name within each type** (no reliance on `_Z`/`_P` suffixes) |
+| G5 | Assembly sheets | Auto by part count: **small** = 1 sheet (side views + 1 iso + parts list + balloons); **large** = several sheets, the first is **iso + parts list + balloons only**. Sheet count per assembly can be changed in the tree |
 | E26 | Dimensions v1 | **Overall dimensions** everywhere; flat pattern: **edge → first bend, then bend → bend (chain)**, bend direction up/down + angle |
 | E27 | Hole dimension style | Not now |
 | E28 | Flat pattern extras | Yes: overall + bend positions + thickness/material note |
@@ -68,6 +73,8 @@ Status: **planning** — nothing is built yet. Items marked ❓ are still open.
 - Sort inside every assembly node: sub-assemblies → SM folded → SM flat → lathe → tubes → general,
   then by name. Content Center parts are pulled out into one collapsed, unchecked
   **Content Center** group at the very bottom.
+- Assembly rows have a **Sheets** column (auto-filled from the part count, editable).
+- A **Sheet no.** column shows the sheet each document will get (preview before generating).
 - iProperty columns (e.g. Aantal) are edited in place; the value is written to the part's custom
   iProperty and the part is saved with the run (or on "Save properties").
 - Checkbox per row; checking a sub-assembly checks its children (tri-state).
@@ -121,7 +128,7 @@ Reference: `2026-5-12_Productie (container_boven).pdf` (34 sheets) and
   Folded views: overall dims; non-90° bends get an angle dim (135°) in the side view.
   Flat pattern: overall dims, bend dims edge → bend → bend → edge (chain, `diversen_Z2`), bend
   notes `UP 90° R4.8` / `DOWN 45° R9.6` along each bend line.
-  Many parallel bends (`mixing_tank_Z1`, 10 bends) are dimensioned **ordinate from 0** ❓.
+  Many parallel bends (`mixing_tank_Z1`) were done ordinate by hand — AutoDraw always uses **chain**.
 - **Flat (P) sheets**: flat view + edge view (thickness), overall dims (680 / 80 / 15), hole/thread
   note with count (`3x M16x2`). No iso.
 - **Tubes (Koker/Buis)** and **lathe parts (I1, I2)** have **no own sheet** in these sets: tubes are
@@ -135,11 +142,12 @@ from iProperties by the template.
 
 | Type | Views | Annotations |
 |---|---|---|
-| **Assembly** | 1–2 iso views (+ top view) | Parts list (top level, bottom right) + balloons |
+| **Assembly – small** | 1 sheet: front/top/side + 1 iso | Parts list (top level, bottom right) + balloons on the iso |
+| **Assembly – large** | Sheet 1: iso only; sheets 2…n: ❓ (front/top/side?) | Sheet 1: parts list + balloons |
 | **SM folded** | Folded front/top/side centre, iso top right, flat pattern + edge view bottom left | Folded: overall dims, angle dims for non-90° bends. Flat: overall, chain bend dims, bend notes (UP/DOWN, angle, radius) |
 | **SM flat** | Flat pattern + edge view | Overall dims + thickness; hole/thread notes with count |
-| **Tube / profile** | Long view (break view when long), cross-section | Overall length (cut angles: later) — only if it gets its own sheet ❓ |
-| **Lathe** | Side view with axis horizontal, half section | Overall length + diameters — only if it gets its own sheet ❓ |
+| **Tube / profile** | Own sheet: long view (break view when long), cross-section, iso | Overall length (cut angles: later) |
+| **Lathe** | Own sheet: side view with axis horizontal, half section, iso | Overall length + diameters |
 | **General** | Front, top, side, iso | Overall dimensions |
 
 ### Scale algorithm (sheet is fixed by the template)
@@ -221,20 +229,21 @@ scale auto, tree sort order, Content Center group at bottom, parts list only on 
 Answered in round 5: own templates — user picks one and it is used for all sheets; settings in
 `%APPDATA%\AutoDraw`; only internal users for now, installer later; example sets provided (§4.0).
 
-Still to answer (from the example sets):
-1. **One .idw or many?** The examples are one multi-sheet .idw per main assembly. Is that the
-   output (e.g. `{date}_Productie_({assembly}).idw` next to the main assembly), instead of one
-   .idw per part?
-2. **Sheet number → Opmerking**: should AutoDraw write the sheet number (`010`) into the part's
-   iProperty so the parts list and header show it? Which iProperty is that, and where does the
-   `lasersnijden` text come from (typed by you, or from a setting per type)?
-3. **Header + sheet number** (top left / top right): already in the template's border, or should
-   AutoDraw place them?
-4. **Tubes and lathe parts**: in the examples they have no own sheet. Own sheet, or only in the
-   parts list / on the assembly sheet? (Could be a setting per type.)
-5. **Name suffixes** `_S/_Z/_P`: use them as a detection hint? What are `_I` and `_X`?
-6. **Assembly sheet views**: two isos (front-left + back-right) + top view like the examples?
-7. **Many parallel bends** (`mixing_tank_Z1`): chain, or switch to ordinate from 0 above a number
-   of bends?
-8. **Sheet order** within a type: sorted by name (Z1, Z2, Z3…) or by tree order?
-9. Still open: PDF / DXF export with the run? Language of UI (drawing notes are Dutch/English mix).
+Answered in round 6: one .idw per main assembly, every document its own sheet (tubes and lathe
+too), sheet number written to the part, header/sheet number come from the template, chain bend
+dims always, alphabetical per type, assembly sheet count auto + adjustable.
+
+Still to answer:
+1. **File name and place** of the .idw: `{main assembly name}.idw` next to the main assembly, or
+   the `{date}_Productie_({name})` style of the PDFs?
+2. **Which iProperty** gets the sheet number? (Stock Number, or a custom one like `Opmerking`?)
+   And the `lasersnijden` text after it — does AutoDraw add it (e.g. for sheet metal types), or
+   do you type it yourselves?
+3. **Large assembly**: from how many parts is it "large" (proposal: > 15 parts in its own level)?
+   What goes on sheets 2…n — front/top/side views without parts list, or empty sheets that you
+   fill in yourselves?
+4. **Re-running** on an assembly whose .idw already exists (with your hand-made extra sheets):
+   a) make a new .idw next to it, b) overwrite all, or c) keep existing sheets and only **add
+   sheets for new parts** (and renumber)?
+5. PDF / DXF export at the end of the run, or not for now?
+6. UI language: English or Dutch?
