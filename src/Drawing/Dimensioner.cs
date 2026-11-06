@@ -71,7 +71,7 @@ namespace AutoDraw.Drawing
         private enum Side { Left, Right, Bottom, Top }
 
         /// <summary>The geometry at the far <paramref name="side"/> of the view, as a dimension anchor.</summary>
-        private GeometryIntent Extreme(List<Curve> curves, Side side, out double at)
+        private GeometryIntent Extreme(List<Curve> curves, Side side, out double at, bool pointsOnly = false)
         {
             at = 0;
             List<Curve> outline = curves.Where(IsOutline).ToList();
@@ -88,7 +88,7 @@ namespace AutoDraw.Drawing
             bool horizontalSide = side == Side.Left || side == Side.Right;   // the anchor is found along X
 
             // 1. a straight edge lying on that side (vertical for left/right, horizontal for bottom/top): dimension to the edge
-            foreach (Curve k in outline.Where(k => k.IsLine))
+            foreach (Curve k in outline.Where(k => k.IsLine && !pointsOnly))
             {
                 bool on = horizontalSide
                     ? Math.Abs(k.SX - v) < eps && Math.Abs(k.EX - v) < eps
@@ -133,24 +133,31 @@ namespace AutoDraw.Drawing
             var box = Box(view);
             if (width)
             {
-                GeometryIntent l = Extreme(curves, Side.Left, out double lx), r = Extreme(curves, Side.Right, out double rx);
-                if (rx - lx > 1e-3)
-                {
-                    LinearGeneralDimension d = Linear(_tg.CreatePoint2d((lx + rx) / 2, box.MaxY + Gap + stack * Step), l, r, DimensionTypeEnum.kHorizontalDimensionType);
-                    if (d != null) made.Add(d);
-                }
+                LinearGeneralDimension d = Between(curves, Side.Left, Side.Right, DimensionTypeEnum.kHorizontalDimensionType,
+                    (a, b) => _tg.CreatePoint2d((a + b) / 2, box.MaxY + Gap + stack * Step));
+                if (d != null) made.Add(d);
             }
             if (height)
             {
-                GeometryIntent b = Extreme(curves, Side.Bottom, out double by), t = Extreme(curves, Side.Top, out double ty);
-                if (ty - by > 1e-3)
-                {
-                    double x = heightRight ? box.MaxX + Gap + stack * Step : box.MinX - Gap - stack * Step;
-                    LinearGeneralDimension d = Linear(_tg.CreatePoint2d(x, (by + ty) / 2), b, t, DimensionTypeEnum.kVerticalDimensionType);
-                    if (d != null) made.Add(d);
-                }
+                double x = heightRight ? box.MaxX + Gap + stack * Step : box.MinX - Gap - stack * Step;
+                LinearGeneralDimension d = Between(curves, Side.Bottom, Side.Top, DimensionTypeEnum.kVerticalDimensionType,
+                    (a, b) => _tg.CreatePoint2d(x, (a + b) / 2));
+                if (d != null) made.Add(d);
             }
             return made;
+        }
+
+        /// <summary>A dimension between the two far sides: to whole edges first, to end points when that fails.</summary>
+        private LinearGeneralDimension Between(List<Curve> curves, Side from, Side to, DimensionTypeEnum type, Func<double, double, Point2d> text)
+        {
+            foreach (bool pointsOnly in new[] { false, true })
+            {
+                GeometryIntent a = Extreme(curves, from, out double av, pointsOnly), b = Extreme(curves, to, out double bv, pointsOnly);
+                if (bv - av <= 1e-3) return null;
+                LinearGeneralDimension d = Linear(text(av, bv), a, b, type);
+                if (d != null) return d;
+            }
+            return null;
         }
 
         /// <summary>Puts a Ø in front of the dimension value (diameters of lathe parts and round tubes).</summary>

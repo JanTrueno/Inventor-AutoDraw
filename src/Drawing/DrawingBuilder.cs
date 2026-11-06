@@ -154,7 +154,19 @@ namespace AutoDraw.Drawing
             for (int i = drawing.Sheets.Count; i > 1; i--) drawing.Sheets[i].Delete(false);
             Sheet first = drawing.Sheets[1];
             for (int i = first.DrawingViews.Count; i >= 1; i--) first.DrawingViews[i].Delete();
-            for (int i = 1; i < count; i++) first.CopyTo((_DrawingDocument)drawing);
+            TitleBlockDefinition tbDef = null;
+            BorderDefinition borderDef = null;
+            try { tbDef = first.TitleBlock?.Definition; } catch { }
+            try { borderDef = first.Border?.Definition; } catch { }
+            for (int i = 1; i < count; i++)
+            {
+                Sheet copy = first.CopyTo((_DrawingDocument)drawing);
+                // a copy should keep border and title block; add them when it did not
+                try { if (borderDef != null && copy.Border == null) copy.AddBorder(borderDef, Type.Missing); }
+                catch (Exception ex) { Log.Write("Adding the border failed: " + ex.Message); }
+                try { if (tbDef != null && copy.TitleBlock == null) copy.AddTitleBlock(tbDef, Type.Missing, Type.Missing); }
+                catch (Exception ex) { Log.Write("Adding the title block failed: " + ex.Message); }
+            }
         }
 
         private void Build(Sheet sheet, SheetJob job)
@@ -260,7 +272,7 @@ namespace AutoDraw.Drawing
                 f.Part(0, 0.3, 0.62, 1), null, f.Part(0.62, 0.45, 0.82, 1));
             Iso(sheet, doc, f.Part(0.82, 0.55, 1, 1));
             var d = new Dimensioner(_app, sheet);
-            List<LinearGeneralDimension> dims = d.Overall(o.Base, true, false);
+            d.Overall(o.Base, true, false);
             foreach (LinearGeneralDimension dia in d.Overall(o.Base, false, true)) Dimensioner.Diameter(dia);
         }
 
@@ -411,16 +423,30 @@ namespace AutoDraw.Drawing
         /// <summary>The flat pattern view in <paramref name="flatR"/> and its edge view (showing the thickness) to the right.</summary>
         private (DrawingView, DrawingView) FlatViews(Sheet sheet, Document doc, Region flatR, Region edgeR)
         {
-            if (!(doc is PartDocument p) || !(p.ComponentDefinition is SheetMetalComponentDefinition sm) || !sm.HasFlatPattern)
-                throw new InvalidOperationException("No flat pattern.");
-            double len = sm.FlatPattern.Length, wid = sm.FlatPattern.Width;
-            double scale = Scales.Snap(Math.Min(Scales.Fit(Math.Max(len, wid), Math.Min(len, wid), flatR.W, flatR.H),
-                                                Scales.Fit(len, wid, flatR.W, flatR.H)));
-
-            NameValueMap options = _app.TransientObjects.CreateNameValueMap();
-            options.Add("SheetMetalFoldedModel", false);
-            DrawingView flat = sheet.DrawingViews.AddBaseView((_Document)doc, P(flatR.CX, flatR.CY), scale,
-                ViewOrientationTypeEnum.kDefaultViewOrientation, Lines, "", Type.Missing, options);
+            if (!(doc is PartDocument p)) throw new InvalidOperationException("Not a part.");
+            DrawingView flat;
+            if (p.ComponentDefinition is SheetMetalComponentDefinition sm && sm.HasFlatPattern)
+            {
+                double len = sm.FlatPattern.Length, wid = sm.FlatPattern.Width;
+                double scale = Scales.Snap(Math.Min(Scales.Fit(Math.Max(len, wid), Math.Min(len, wid), flatR.W, flatR.H),
+                                                    Scales.Fit(len, wid, flatR.W, flatR.H)));
+                NameValueMap options = _app.TransientObjects.CreateNameValueMap();
+                options.Add("SheetMetalFoldedModel", false);
+                flat = sheet.DrawingViews.AddBaseView((_Document)doc, P(flatR.CX, flatR.CY), scale,
+                    ViewOrientationTypeEnum.kDefaultViewOrientation, Lines, "", Type.Missing, options);
+            }
+            else
+            {
+                // a solid plate (or sheet metal that cannot be unfolded): look straight at it along its thinnest side
+                Box box = p.ComponentDefinition.RangeBox;
+                ModelAxis thin = KindDetector.ShortestAxis(box, out _, out _);
+                double ex = box.MaxPoint.X - box.MinPoint.X, ey = box.MaxPoint.Y - box.MinPoint.Y, ez = box.MaxPoint.Z - box.MinPoint.Z;
+                ViewOrientationTypeEnum o = thin == ModelAxis.Z ? ViewOrientationTypeEnum.kFrontViewOrientation
+                    : thin == ModelAxis.Y ? ViewOrientationTypeEnum.kTopViewOrientation : ViewOrientationTypeEnum.kRightViewOrientation;
+                (double w, double h) = thin == ModelAxis.Z ? (ex, ey) : thin == ModelAxis.Y ? (ex, ez) : (ez, ey);
+                double scale = Scales.Snap(Scales.Fit(w, h, flatR.W, flatR.H));
+                flat = sheet.DrawingViews.AddBaseView((_Document)doc, P(flatR.CX, flatR.CY), scale, o, Lines, "", Type.Missing, Type.Missing);
+            }
             Tidy(flat);
 
             DrawingView edge = null;

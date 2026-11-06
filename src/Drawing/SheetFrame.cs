@@ -41,13 +41,23 @@ namespace AutoDraw.Drawing
             }
             catch { }
             double header = Math.Max(2.5, 0.13 * H);   // "4x part" / material / bewerking, and the sheet number
+            x1 -= Math.Max(1.5, 0.03 * W);              // the vertical "Datum gecontroleerd" text along the right edge
             Usable = new Region(x0, y0, x1, y1 - header);
 
-            TitleBlock = new Region(W * 0.52, 0, W, H * 0.24);
+            // The company title block's range box also holds texts far from the block itself (it covers nearly the
+            // whole sheet), so it is only trusted when it looks like a corner block; otherwise the block is taken to be
+            // the bottom-right 38 % × 21 % of the sheet, as on the J. Blom Opmeer A2 sheets.
+            double right = x1 + Math.Max(1.5, 0.03 * W), bottom = y0 - 0.8;
+            TitleBlock = new Region(W * 0.62, bottom, right, H * 0.21);
             try
             {
                 Box2d tb = sheet.TitleBlock?.RangeBox;
-                if (tb != null) TitleBlock = new Region(tb.MinPoint.X, tb.MinPoint.Y, tb.MaxPoint.X, tb.MaxPoint.Y);
+                if (tb != null)
+                {
+                    double w = tb.MaxPoint.X - tb.MinPoint.X, h = tb.MaxPoint.Y - tb.MinPoint.Y;
+                    if (w > 1 && h > 1 && w < 0.6 * W && h < 0.35 * H)
+                        TitleBlock = new Region(tb.MinPoint.X, tb.MinPoint.Y, tb.MaxPoint.X, tb.MaxPoint.Y);
+                }
             }
             catch { }
         }

@@ -31,6 +31,7 @@ namespace AutoDraw.Core
             if (IsFrameMember(doc)) return DocKind.Tube;
 
             Shape shape = Analyse(part.ComponentDefinition);
+            if (shape.Plate) return DocKind.SheetMetalFlat;   // a solid plate (round or not) of one thickness: cut like sheet metal
             if (shape.Rotational && shape.Long && shape.AlongFraction > 0.85) return DocKind.Tube;   // a pipe
             if (shape.Rotational) return DocKind.Lathe;
             if (shape.Long && shape.AlongFraction > 0.85) return DocKind.Tube;
@@ -62,6 +63,20 @@ namespace AutoDraw.Core
             public double AlongFraction;  // face area running along the longest side, 0..1
             public ModelAxis LongAxis;
             public ModelAxis RotationAxis;
+            /// <summary>A plate: two flat faces at the ends of the thinnest side, every other face straight through.</summary>
+            public bool Plate;
+            public ModelAxis ThinAxis;
+        }
+
+        /// <summary>The model axis of the shortest side of the range box.</summary>
+        public static ModelAxis ShortestAxis(Box box, out double shortest, out double middle)
+        {
+            double dx = box.MaxPoint.X - box.MinPoint.X, dy = box.MaxPoint.Y - box.MinPoint.Y, dz = box.MaxPoint.Z - box.MinPoint.Z;
+            var sides = new List<(double L, ModelAxis A)> { (dx, ModelAxis.X), (dy, ModelAxis.Y), (dz, ModelAxis.Z) };
+            sides.Sort((a, b) => a.L.CompareTo(b.L));
+            shortest = sides[0].L;
+            middle = sides[1].L;
+            return sides[0].A;
         }
 
         /// <summary>The model axis of the longest side of the range box.</summary>
@@ -121,6 +136,40 @@ namespace AutoDraw.Core
             }
             if (total <= 0) return shape;
             shape.AlongFraction = along / total;
+
+            // plate: thin compared to its size, the faces either the two flat sides (at the ends of the thin side) or
+            // running straight through it (edges, holes, round outlines)
+            shape.ThinAxis = ShortestAxis(box, out double thin, out double mid);
+            if (thin > 1e-6 && thin <= 0.35 * mid)
+            {
+                (double tx, double ty, double tz) = Unit(shape.ThinAxis);
+                double lo = shape.ThinAxis == ModelAxis.X ? box.MinPoint.X : shape.ThinAxis == ModelAxis.Y ? box.MinPoint.Y : box.MinPoint.Z;
+                double hi = lo + thin;
+                double through = 0, caps = 0;
+                for (int i = 0; i < faces.Count; i++)
+                {
+                    try
+                    {
+                        switch (faces[i].Geometry)
+                        {
+                            case Plane pl:
+                                double dot = pl.Normal.X * tx + pl.Normal.Y * ty + pl.Normal.Z * tz;
+                                if (Math.Abs(dot) < 0.001) through += areas[i];
+                                else if (Math.Abs(dot) > 0.999)
+                                {
+                                    double at = pl.RootPoint.X * tx + pl.RootPoint.Y * ty + pl.RootPoint.Z * tz;
+                                    if (Math.Abs(at - lo) < 0.001 || Math.Abs(at - hi) < 0.001) caps += areas[i];
+                                }
+                                break;
+                            case Cylinder cy:
+                                if (Math.Abs(cy.AxisVector.X * tx + cy.AxisVector.Y * ty + cy.AxisVector.Z * tz) > 0.999) through += areas[i];
+                                break;
+                        }
+                    }
+                    catch { }
+                }
+                shape.Plate = caps > 0 && (through + caps) / total > 0.97;
+            }
 
             // rotational: the biggest cylinder or cone gives the axis; every face must turn around it
             int best = -1;
