@@ -1,4 +1,4 @@
-# AutoDraw — Plan (draft 6)
+# AutoDraw — Plan (draft 7)
 
 Inventor 2025 add-in that generates drawings for every part and sub-assembly of the open assembly,
 with a drawing layout per part type and automatic dimensions.
@@ -33,11 +33,11 @@ Status: **planning** — nothing is built yet. Items marked ❓ are still open.
 | D | Layout defaults | All accepted (see §4); **no automatic sheet size** — sheet comes from the template; **scale auto-detected** from part size |
 | D20 | Sort order | Within each assembly level: sub-assemblies first (deeper levels below), then SM folded → SM flat → lathe → tubes → general; Content Center last |
 | D20 | Parts list | **Only on assembly drawings**, **top level** (that assembly's own level) |
-| G1 | Output | **One .idw per main assembly, one sheet per document** (all types get their own sheet) |
-| G2 | Sheet number | AutoDraw **writes the sheet number into each part's iProperty** (format `010`) |
+| G1 | Output | **One .idw per main assembly, one sheet per document** (all types get their own sheet), saved next to the main assembly as **`{Ordernummer}_{assembly name}_{date}.idw`** |
+| G2 | Sheet number | AutoDraw **writes the sheet number into each part's custom iProperty `Bewerking`** (format `010`) |
 | G3 | Header / sheet no. | Already in the company template — AutoDraw only fills iProperties |
 | G4 | Sheet order | Main assembly → sub-assemblies → SM folded → SM flat → lathe → tubes → general; **alphabetical by name within each type** (no reliance on `_Z`/`_P` suffixes) |
-| G5 | Assembly sheets | Auto by part count: **small** = 1 sheet (side views + 1 iso + parts list + balloons); **large** = several sheets, the first is **iso + parts list + balloons only**. Sheet count per assembly can be changed in the tree |
+| G5 | Assembly sheets | Auto by part count: **small** (≤ 15 parts on its own level) = 1 sheet (side views + 1 iso + parts list + balloons); **large** (> 15) = 2 sheets: sheet 1 **iso + parts list + balloons**, sheet 2 **front/top/side, no iso**. Sheet count per assembly can be changed in the tree |
 | E26 | Dimensions v1 | **Overall dimensions** everywhere; flat pattern: **edge → first bend, then bend → bend (chain)**, bend direction up/down + angle |
 | E27 | Hole dimension style | Not now |
 | E28 | Flat pattern extras | Yes: overall + bend positions + thickness/material note |
@@ -143,7 +143,7 @@ from iProperties by the template.
 | Type | Views | Annotations |
 |---|---|---|
 | **Assembly – small** | 1 sheet: front/top/side + 1 iso | Parts list (top level, bottom right) + balloons on the iso |
-| **Assembly – large** | Sheet 1: iso only; sheets 2…n: ❓ (front/top/side?) | Sheet 1: parts list + balloons |
+| **Assembly – large** | Sheet 1: iso only; sheet 2: front/top/side, no iso; sheets 3…n (if set by hand): empty ❓ | Sheet 1: parts list + balloons; sheet 2: overall dims |
 | **SM folded** | Folded front/top/side centre, iso top right, flat pattern + edge view bottom left | Folded: overall dims, angle dims for non-90° bends. Flat: overall, chain bend dims, bend notes (UP/DOWN, angle, radius) |
 | **SM flat** | Flat pattern + edge view | Overall dims + thickness; hole/thread notes with count |
 | **Tube / profile** | Own sheet: long view (break view when long), cross-section, iso | Overall length (cut angles: later) |
@@ -233,15 +233,15 @@ Answered in round 6: one .idw per main assembly, every document its own sheet (t
 too), sheet number written to the part, header/sheet number come from the template, chain bend
 dims always, alphabetical per type, assembly sheet count auto + adjustable.
 
+Answered in round 7: file name `{Ordernummer}_{assembly name}_{date}.idw`, sheet number in
+custom iProperty `Bewerking`, large assembly > 15 parts, sheet 2 = side views without iso.
+
 Still to answer:
-1. **File name and place** of the .idw: `{main assembly name}.idw` next to the main assembly, or
-   the `{date}_Productie_({name})` style of the PDFs?
-2. **Which iProperty** gets the sheet number? (Stock Number, or a custom one like `Opmerking`?)
-   And the `lasersnijden` text after it — does AutoDraw add it (e.g. for sheet metal types), or
-   do you type it yourselves?
-3. **Large assembly**: from how many parts is it "large" (proposal: > 15 parts in its own level)?
-   What goes on sheets 2…n — front/top/side views without parts list, or empty sheets that you
-   fill in yourselves?
+1. **Ordernummer**: which iProperty holds it on the main assembly (custom `Ordernummer`, or
+   Project)? Date format: `2026-11-06` or `2026-11-6` like the PDFs?
+2. **Bewerking** already holding text like `010 lasersnijden`: AutoDraw replaces only the leading
+   number and keeps the text after it (proposal) — ok? Parts without text get just `010`.
+3. Sheets 3…n when someone sets more than 2 for an assembly: empty sheets? (proposal: yes)
 4. **Re-running** on an assembly whose .idw already exists (with your hand-made extra sheets):
    a) make a new .idw next to it, b) overwrite all, or c) keep existing sheets and only **add
    sheets for new parts** (and renumber)?
