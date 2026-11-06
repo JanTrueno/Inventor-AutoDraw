@@ -44,9 +44,9 @@ namespace AutoDraw.Drawing
                 }
             }
             catch { }
-            double header = Math.Max(2.5, 0.13 * H);   // "4x part" / material / bewerking, and the sheet number
-            x1 -= Math.Max(1.5, 0.03 * W);              // the vertical "Datum gecontroleerd" text along the right edge
-            Usable = new Region(x0, y0, x1, y1 - header);
+            // the whole sheet inside the border; the texts in the corners are obstacles, not a band across the top
+            Usable = new Region(x0, y0, x1, y1);
+            double sheetTop = y1 + 0.8;
 
             // The company title block's range box also holds texts far from the block itself (it covers nearly the
             // whole sheet), so it is only trusted when it looks like a corner block; otherwise the block is taken to be
@@ -60,6 +60,7 @@ namespace AutoDraw.Drawing
                 new Region(W * 0.62, bottom, W * 0.655, H * 0.27),     // the Opmerking / Datum / Check / Rev column left of it
                 new Region(W * 0.42, bottom, W * 0.62, H * 0.065)      // "Ordernummer: …" at the bottom
             };
+            Obstacles.AddRange(CornerTexts(sheetTop, borderRight));
             try
             {
                 Box2d tb = sheet.TitleBlock?.RangeBox;
@@ -70,11 +71,23 @@ namespace AutoDraw.Drawing
                     {
                         TitleBlock = new Region(tb.MinPoint.X, tb.MinPoint.Y, tb.MaxPoint.X, tb.MaxPoint.Y);
                         Obstacles = new List<Region> { TitleBlock };
+                        Obstacles.AddRange(CornerTexts(sheetTop, borderRight));
                     }
                 }
             }
             catch { }
         }
+
+        /// <summary>
+        /// The texts in the top corners of the company border: "4x part / material / bewerking" top left (to a quarter of
+        /// the width and 22 % down), the sheet number top right and the vertical "Datum gecontroleerd" along the right edge.
+        /// </summary>
+        private List<Region> CornerTexts(double sheetTop, double right) => new List<Region>
+        {
+            new Region(0, H * 0.78, W * 0.25, sheetTop),
+            new Region(W * 0.92, H * 0.88, right, sheetTop),
+            new Region(W * 0.955, H * 0.74, right, sheetTop)
+        };
 
         /// <summary>
         /// The top of the title block at its right-hand edge (where the parts list stands on it), from the lines of the

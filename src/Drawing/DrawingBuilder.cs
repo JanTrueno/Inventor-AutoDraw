@@ -266,7 +266,9 @@ namespace AutoDraw.Drawing
             PartsList list = AssemblyNotes.AddPartsList(_app, sheet, v.Base, f);
             ViewGroup ig = MeasureSingle(iso, Corner.BottomRight, 3.0, true);
             ig.Area = AbovePartsList(f, list);
-            Arrange(f, WithPartsList(f, list), (ig, Views.Of(iso)), (Measure(v, Corner.TopLeft), v));
+            ViewGroup og = Measure(v, Corner.TopLeft);
+            og.Area = new Region(f.Usable.X0, f.Usable.Y0, f.TitleBlock.X0 - 0.5, f.Usable.Y1);   // left of the title block column
+            Arrange(f, WithPartsList(f, list), (ig, Views.Of(iso)), (og, v));
             AssemblyNotes.AddBalloons(_app, sheet, iso, asm);
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, true);
@@ -414,7 +416,7 @@ namespace AutoDraw.Drawing
             try
             {
                 Box2d rb = list.RangeBox;
-                var r = new Region(Math.Max(f.Usable.X0, rb.MinPoint.X - 1.0), rb.MaxPoint.Y + 0.5, f.Usable.X1, f.Usable.Y1);
+                var r = new Region(Math.Max(f.Usable.X0, Math.Min(f.TitleBlock.X0, rb.MinPoint.X - 1.0)), rb.MaxPoint.Y + 0.5, f.Usable.X1, f.Usable.Y1);
                 return r.H > 5 && r.W > 5 ? r : (Region?)null;
             }
             catch { return null; }
@@ -450,8 +452,12 @@ namespace AutoDraw.Drawing
                 Log.Write("Views do not fit at the smallest scale.");
             foreach ((ViewGroup g, Views v) in items)
             {
-                try { if (Math.Abs(v.Base.Scale - g.Scale) > 1e-9) v.Base.Scale = g.Scale; }
-                catch (Exception ex) { Log.Write("Setting the scale failed: " + ex.Message); }
+                foreach (DrawingView view in new[] { v.Base, v.Below, v.Side })
+                {
+                    if (view == null) continue;
+                    try { if (Math.Abs(view.Scale - g.Scale) > 1e-9 && !view.ScaleFromBase) view.Scale = g.Scale; }
+                    catch (Exception ex) { Log.Write("Setting the scale failed: " + ex.Message); }
+                }
                 try { v.Base.Center = P(g.BaseCX, g.BaseCY); } catch (Exception ex) { Log.Write("Moving a view failed: " + ex.Message); }
                 if (v.Below != null) { try { v.Below.Center = P(g.BaseCX, g.BelowCY); } catch { } }
                 if (v.Side != null) { try { v.Side.Center = P(g.EdgeW > 0 ? g.EdgeCX : g.SideCX, g.BaseCY); } catch { } }
@@ -560,27 +566,38 @@ namespace AutoDraw.Drawing
         private static double Guess(SheetFrame f, double w, double h) => Scales.Snap(Scales.Fit(w, h, f.Usable.W * 0.6, f.Usable.H * 0.6));
 
         /// <summary>The base view with the projected view below it (first angle: the top view) and/or to its right (the left-side view).</summary>
-        private Views CreateOrtho(Sheet sheet, SheetFrame f, Document doc, Orient o, bool below, bool side)
+        private Views CreateOrtho(Sheet sheet, SheetFrame f, Document doc, Orient o, bool top, bool side)
         {
-            double s = Guess(f, o.W + (side ? o.D : 0), o.H + (below ? o.D : 0));
-            double cx = f.Usable.X0 + f.Usable.W * 0.3, cy = f.Usable.Y0 + f.Usable.H * 0.6;
-            var v = new Views();
-            v.Base = AddView(sheet, doc, P(cx, cy), s, o.Dir);
-            Tidy(v.Base);
-            if (o.Rotate) { try { v.Base.Rotation = Math.PI / 2; } catch (Exception ex) { Log.Write("Rotating the view failed: " + ex.Message); } }
+            double s = Guess(f, o.W + (side ? o.D : 0), o.H + (top ? o.D : 0));
+            double cx = f.Usable.X0 + f.Usable.W * 0.3, cy = f.Usable.Y0 + f.Usable.H * 0.5;
             double off = (Math.Max(o.W, o.H) + o.D) * s;
-            if (below)
+
+            // the base view; a tube or lathe part lying upright is turned by looking at it with its length as "right"
+            double[] e = o.Dir.Eye, u = o.Dir.Up;
+            if (o.Rotate) u = Cross(u, e);
+            double[] r = Cross(u, e);   // screen right of the base view
+
+            var v = new Views();
+            v.Base = AddView(sheet, doc, P(cx, cy), s, new ViewDir { Eye = e, Up = u });
+            Tidy(v.Base);
+            // regular layout: the top view (looking down, front side facing the base view) above it, the right view right of it
+            if (top)
             {
-                try { v.Below = sheet.DrawingViews.AddProjectedView(v.Base, P(cx, cy - off), DrawingViewStyleEnum.kFromBaseDrawingViewStyle, Type.Missing); Tidy(v.Below); }
-                catch (Exception ex) { Log.Write("Projected view below failed: " + ex.Message); }
+                try { v.Below = AddView(sheet, doc, P(cx, cy + off), s, new ViewDir { Eye = u, Up = Neg(e) }); Tidy(v.Below); }
+                catch (Exception ex) { Log.Write("Top view failed: " + ex.Message); }
             }
             if (side)
             {
-                try { v.Side = sheet.DrawingViews.AddProjectedView(v.Base, P(cx + off, cy), DrawingViewStyleEnum.kFromBaseDrawingViewStyle, Type.Missing); Tidy(v.Side); }
-                catch (Exception ex) { Log.Write("Projected side view failed: " + ex.Message); }
+                try { v.Side = AddView(sheet, doc, P(cx + off, cy), s, new ViewDir { Eye = r, Up = u }); Tidy(v.Side); }
+                catch (Exception ex) { Log.Write("Right view failed: " + ex.Message); }
             }
             return v;
         }
+
+        private static double[] Cross(double[] a, double[] b) =>
+            new[] { a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0] };
+
+        private static double[] Neg(double[] a) => new[] { -a[0], -a[1], -a[2] };
 
         /// <summary>An isometric view (top right), hidden lines removed.</summary>
         private DrawingView CreateIso(Sheet sheet, SheetFrame f, Document doc)

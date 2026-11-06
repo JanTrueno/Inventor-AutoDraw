@@ -79,17 +79,19 @@ internal static class CoreTests
         Check("fit", Math.Abs(Scales.Fit(100, 50, 50, 50, 1) - 0.5) < 1e-9);
 
         // layout: the mixing tank on an A2 sheet (usable area and title block as on the company sheet)
-        var usable = new Region(1.8, 1.8, 55.6, 34.7);
-        var obstacles = new List<Region> { new Region(36.8, 0.2, 58.4, 8.8), new Region(36.8, 0.2, 38.9, 11.3), new Region(24.9, 0.2, 36.8, 2.7) };
+        var usable = new Region(1.8, 1.8, 57.6, 40.2);
+        var obstacles = new List<Region> { new Region(36.8, 0.2, 58.4, 8.8), new Region(36.8, 0.2, 38.9, 11.3), new Region(24.9, 0.2, 36.8, 2.7),
+            new Region(0, 32.8, 14.9, 41), new Region(54.6, 37, 58.4, 41), new Region(56.7, 31.1, 58.4, 41) };
         var ortho = new ViewGroup { BW = 148, BH = 51.6, BelowH = 51.6, SideW = 51.6 };
         var iso = new ViewGroup { BW = 141, BH = 102, Prefer = Corner.TopRight, Flexible = true, MarginL = 0.5, MarginR = 0.5, MarginT = 0.5, MarginB = 0.5 };
         bool packed = Layout.Pack(new List<ViewGroup> { ortho, iso }, usable, obstacles);
         Check("tank packs", packed);
+        Check("header box stays free", !ortho.Box.Overlaps(obstacles[3]) && !iso.Box.Overlaps(obstacles[3]));
         Check("tank ortho scale at least 1:8", ortho.Scale >= 1 / 8.0 - 1e-9, "1:" + (1 / ortho.Scale).ToString("0.#"));
         Check("groups do not overlap", !ortho.Box.Overlaps(iso.Box));
         Check("nothing on the title block", obstacles.All(o => !o.Overlaps(ortho.Box) && !o.Overlaps(iso.Box)));
-        Check("top view above the base view", ortho.BelowCY > ortho.BaseCY && Math.Abs(ortho.BaseCX - (ortho.Box.X0 + ortho.MarginL + 51.6 * ortho.Scale + ortho.Gap + 148 * ortho.Scale / 2)) < 1e-6);
-        Check("side view left of the base view", ortho.SideCX < ortho.BaseCX);
+        Check("top view above the base view", ortho.BelowCY > ortho.BaseCY);
+        Check("right view right of the base view", ortho.SideCX > ortho.BaseCX);
         var flatG = new ViewGroup { BW = 100, BH = 30, EdgeW = 0.2, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
         var isoF = new ViewGroup { BW = 40, BH = 40, Prefer = Corner.TopRight, Flexible = true };
         var orthoF = new ViewGroup { BW = 60, BH = 100, BelowH = 30, SideW = 30 };

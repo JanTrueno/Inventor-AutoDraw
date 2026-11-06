@@ -8,15 +8,15 @@ namespace AutoDraw.Drawing
     internal enum Corner { TopLeft, TopRight, BottomLeft, BottomRight }
 
     /// <summary>
-    /// Views that stay together on the sheet, as one box: a base view with optionally its top view placed above it and
-    /// its side view placed to its left (the company layout), or a single view. Sizes are model sizes (cm at 1:1); margins and gaps
+    /// Views that stay together on the sheet, as one box: a base view with optionally its top view above it and its
+    /// right view to its right (the regular layout), or a single view. Sizes are model sizes (cm at 1:1); margins and gaps
     /// are sheet centimetres kept free for dimensions.
     /// </summary>
     internal sealed class ViewGroup
     {
         public double BW, BH;          // base view
         public double BelowH;          // height of the top view, placed above the base view (its width is BW); 0 = none
-        public double SideW;           // width of the side view, placed left of the base view (its height is BH); 0 = none
+        public double SideW;           // width of the right view, placed right of the base view (its height is BH); 0 = none
         public double MarginL = 2.5, MarginR = 0.5, MarginT = 2.5, MarginB = 0.5, Gap = 3.0;
         public Corner Prefer = Corner.TopLeft;
         public bool Flexible;          // may get a smaller scale than the other groups (iso views)
@@ -34,12 +34,12 @@ namespace AutoDraw.Drawing
             MarginL + BW * s + (HasSide ? Gap + SideW * s : 0) + (EdgeW > 1e-6 ? Gap + EdgeW * s : 0) + MarginR,
             MarginT + BH * s + (HasBelow ? Gap + BelowH * s : 0) + MarginB);
 
-        private double BaseLeft => X0 + MarginL + (HasSide ? SideW * Scale + Gap : 0);
+        private double BaseLeft => X0 + MarginL;
         private double BaseTop => Y1 - MarginT - (HasBelow ? BelowH * Scale + Gap : 0);
         public double BaseCX => BaseLeft + BW * Scale / 2;
         public double BaseCY => BaseTop - BH * Scale / 2;
         public double BelowCY => Y1 - MarginT - BelowH * Scale / 2;     // the top view, above the base view
-        public double SideCX => X0 + MarginL + SideW * Scale / 2;        // the side view, left of the base view
+        public double SideCX => BaseLeft + BW * Scale + Gap + SideW * Scale / 2;   // the right view, right of the base view
         public double EdgeCX => BaseLeft + BW * Scale + Gap + EdgeW * Scale / 2;   // the edge view, right of the base view
 
         public Region Box => new Region(X0, Y1 - Size(Scale).H, X0 + Size(Scale).W, Y1);
@@ -80,7 +80,7 @@ namespace AutoDraw.Drawing
                 {
                     (double w, double h) = g.Size(gs);
                     if (w > area.W || h > area.H) continue;
-                    IEnumerable<(double X0, double Y1)> spots = Candidates(area, placed, w, h, g.Prefer);
+                    IEnumerable<(double X0, double Y1)> spots = Candidates(area, placed.Concat(obstacles).ToList(), w, h, g.Prefer);
                     if (g.Fixed) spots = spots.Take(1);
                     foreach ((double x0, double y1) in spots)
                     {
