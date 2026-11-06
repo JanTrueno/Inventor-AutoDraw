@@ -80,17 +80,17 @@ internal static class CoreTests
 
         // layout: the mixing tank on an A2 sheet (usable area and title block as on the company sheet)
         var usable = new Region(1.8, 1.8, 57.6, 40.2);
-        var obstacles = new List<Region> { new Region(36.8, 0.2, 58.4, 8.8), new Region(36.8, 0.2, 38.9, 11.3), new Region(24.9, 0.2, 36.8, 2.7),
+        var obstacles = new List<Region> { new Region(36.8, 0.2, 58.4, 8.8), new Region(36.8, 0.2, 38.9, 11.3), new Region(0, 0.2, 36.8, 2.7),
             new Region(0, 32.8, 14.9, 41), new Region(54.6, 37, 58.4, 41), new Region(56.7, 31.1, 58.4, 41) };
         var ortho = new ViewGroup { BW = 148, BH = 51.6, BelowH = 51.6, SideW = 51.6 };
         var iso = new ViewGroup { BW = 141, BH = 102, Prefer = Corner.TopRight, Flexible = true, MarginL = 0.5, MarginR = 0.5, MarginT = 0.5, MarginB = 0.5 };
         bool packed = Layout.Pack(new List<ViewGroup> { ortho, iso }, usable, obstacles);
         Check("tank packs", packed);
-        Check("header box stays free", !ortho.Box.Overlaps(obstacles[3]) && !iso.Box.Overlaps(obstacles[3]));
+        Check("header box stays free", ortho.Parts().All(q => !q.R.Overlaps(obstacles[3])) && !iso.Box.Overlaps(obstacles[3]));
         Check("tank ortho scale at least 1:8", ortho.Scale >= 1 / 8.0 - 1e-9, "1:" + (1 / ortho.Scale).ToString("0.#"));
         Check("groups do not overlap", !ortho.Box.Overlaps(iso.Box));
         Check("tank views spread and inside", ortho.ExtraX > 0 && ortho.Box.X0 >= usable.X0 - 1e-6 && ortho.Box.X1 <= usable.X1 + 1e-6, ortho.ExtraX.ToString("0.0"));
-        Check("nothing on the title block", obstacles.All(o => !o.Overlaps(ortho.Box) && !o.Overlaps(iso.Box)));
+        Check("nothing on the title block", obstacles.All(o => ortho.Parts().All(q => !q.R.Overlaps(o)) && !o.Overlaps(iso.Box)));
         Check("top view above the base view", ortho.BelowCY > ortho.BaseCY);
         Check("side view left of the base view", ortho.SideCX < ortho.BaseCX);
 
@@ -108,7 +108,7 @@ internal static class CoreTests
         var isoF = new ViewGroup { BW = 40, BH = 40, Prefer = Corner.TopRight, Flexible = true };
         var orthoF = new ViewGroup { BW = 60, BH = 100, BelowH = 30, SideW = 30 };
         Layout.Pack(new List<ViewGroup> { flatG, isoF, orthoF }, usable, obstacles);
-        Check("flat pattern bottom left", Math.Abs(flatG.Box.X0 - usable.X0) < 1e-6 && Math.Abs(flatG.Box.Y0 - usable.Y0) < 1e-6);
+        Check("flat pattern bottom left", Math.Abs(flatG.Box.X0 - usable.X0) < 1e-6 && flatG.Box.Y0 < 5);
         Check("edge view right of the flat pattern", flatG.EdgeCX > flatG.BaseCX);
         Check("inside the sheet", ortho.Box.X0 >= usable.X0 && ortho.Box.Y0 >= usable.Y0 && iso.Box.X1 <= usable.X1 + 1e-6 && iso.Box.Y1 <= usable.Y1 + 1e-6);
 
@@ -116,30 +116,29 @@ internal static class CoreTests
         Layout.Pack(new List<ViewGroup> { plate }, usable, obstacles);
         Check("plate 680x80 gets 1:2 or larger", plate.Scale >= 0.5 - 1e-9, "1:" + (1 / plate.Scale).ToString("0.#"));
 
-        // the same zones for a tall folded part (mixing_tank_Z3/Z2 sizes): iso bottom right as well
-        var z3Flat = new ViewGroup { BW = 100.7, BH = 45.7, EdgeW = 0.2, SideLeft = false, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
-        var z3Ortho = new ViewGroup { BW = 45.7, BH = 86, BelowH = 21.7, SideW = 21.7, Prefer = Corner.TopRight, FillY = true, AlignRight = true, MaxExtraX = 3 };
-        var z3Iso = new ViewGroup { BW = 32.5, BH = 88.6, Prefer = Corner.BottomRight, Flexible = true, MarginL = 0.5, MarginR = 0.5, MarginT = 0.5, MarginB = 0.5 };
-        Layout.SheetMetalZones(usable, 36.8, obstacles, z3Flat, z3Ortho, z3Iso);
-        bool z3 = Layout.Pack(new List<ViewGroup> { z3Flat, z3Ortho, z3Iso }, usable, obstacles);
-        Check("Z3 packs in the zones", z3, "1:" + (1 / z3Ortho.Scale).ToString("0.#") + ", flat 1:" + (1 / z3Flat.Scale).ToString("0.#") + ", iso 1:" + (1 / z3Iso.Scale).ToString("0.#"));
+        // parts: flat pattern bottom left, views above it (top view at the top), iso in the right-hand column
         Func<Region, string> B = r => $"({r.X0:0.0},{r.Y0:0.0})-({r.X1:0.0},{r.Y1:0.0})";
-        Check("Z3 iso bottom right", z3Iso.Box.X0 > 34 && z3Iso.Box.Y1 <= z3Ortho.Box.Y0 + 1e-6, "iso " + B(z3Iso.Box) + " folded " + B(z3Ortho.Box) + " flat " + B(z3Flat.Box));
-        Check("Z3 flat bottom left", Math.Abs(z3Flat.Box.X0 - usable.X0) < 1e-6 && z3Flat.Box.Y0 < 5);
-        Check("Z3 folded views top right, clear of the flat pattern", (z3Ortho.Box.Y0 >= z3Flat.Box.Y1 - 1e-6 || z3Ortho.Box.X0 >= z3Flat.Box.X1 - 1e-6) && z3Ortho.Box.X1 > usable.X1 - 5 && z3Ortho.Box.Y1 > usable.Y1 - 1.5);
+        foreach (var (name, fw, fh, bw, bh, d, iw, ih) in new[] { ("Z3", 100.7, 45.7, 45.7, 86.0, 21.7, 32.5, 88.6), ("Z6", 55.6, 55.6, 45.0, 4.0, 45.0, 63.0, 42.0) })
+        {
+            var pf = new ViewGroup { BW = fw, BH = fh, EdgeW = 0.2, SideLeft = false, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
+            var po = new ViewGroup { BW = bw, BH = bh, BelowH = d, SideW = d };
+            var pi = new ViewGroup { BW = iw, BH = ih, Flexible = true, MarginL = 0.5, MarginR = 0.5, MarginT = 0.5, MarginB = 0.5 };
+            Layout.PartZones(usable, 36.8, pf, po, pi);
+            bool ok = Layout.Pack(new List<ViewGroup> { pf, po, pi }, usable, obstacles);
+            string where = "views " + B(po.Box) + " flat " + B(pf.Box) + " iso " + B(pi.Box);
+            Check(name + " packs", ok, "1:" + (1 / po.Scale).ToString("0.#") + ", iso 1:" + (1 / pi.Scale).ToString("0.#"));
+            Check(name + " flat pattern bottom left", Math.Abs(pf.Box.X0 - usable.X0) < 1e-6 && pf.Box.Y0 < 5, where);
+            Check(name + " views above the flat pattern, left of the title block column", po.Box.Y0 >= pf.Box.Y1 - 1e-6 && po.Box.X1 <= 35.8 + 1e-6, where);
+            Check(name + " top view at the top", po.Box.Y1 > usable.Y1 - 1.5, where);
+            Check(name + " iso in the right-hand column", pi.Box.X0 >= 36.8 - 1e-6, where);
+            Check(name + " nothing on obstacles", obstacles.All(o => pf.Parts().Concat(po.Parts()).Concat(pi.Parts()).All(q => !q.R.Overlaps(o))), where);
+        }
 
-        // mixing_tank_Z6: the fixed sheet metal arrangement
-        var z6Flat = new ViewGroup { BW = 55.6, BH = 55.6, EdgeW = 0.3, SideLeft = false, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
-        var z6Ortho = new ViewGroup { BW = 45, BH = 4, BelowH = 45, SideW = 45, Prefer = Corner.TopRight, FillY = true, AlignRight = true, MaxExtraX = 3 };
-        var z6Iso = new ViewGroup { BW = 63, BH = 42, Prefer = Corner.BottomRight, Flexible = true, MarginL = 0.5, MarginR = 0.5, MarginT = 0.5, MarginB = 0.5 };
-        Layout.SheetMetalZones(usable, 36.8, obstacles, z6Flat, z6Ortho, z6Iso);
-        bool z6 = Layout.Pack(new List<ViewGroup> { z6Flat, z6Ortho, z6Iso }, usable, obstacles);
-        Check("Z6 packs", z6, "1:" + (1 / z6Ortho.Scale).ToString("0.#"));
-        Check("Z6 folded views on the right", z6Ortho.Box.X1 > usable.X1 - 5, z6Ortho.Box.X1.ToString("0.0"));
-        Check("Z6 top view at the top", z6Ortho.Box.Y1 > usable.Y1 - 1.5, z6Ortho.Box.Y1.ToString("0.0"));
-        Check("Z6 iso bottom right, below the folded views", z6Iso.Box.X0 > 30 && z6Iso.Box.Y1 <= z6Ortho.Box.Y0 + 1e-6 && z6Iso.Box.Y0 < 16,
-            z6Iso.Box.X0.ToString("0.0") + "," + z6Iso.Box.Y0.ToString("0.0"));
-        Check("Z6 nothing overlaps", !z6Flat.Box.Overlaps(z6Ortho.Box) && !z6Iso.Box.Overlaps(z6Ortho.Box) && !z6Iso.Box.Overlaps(z6Flat.Box) && obstacles.All(o => !o.Overlaps(z6Ortho.Box) && !o.Overlaps(z6Iso.Box) && !o.Overlaps(z6Flat.Box)));
+        // assembly: front and side view low, the top view high beside the header box
+        var asmG = new ViewGroup { BW = 51.6, BH = 148, BelowH = 51.6, SideW = 51.6, FillY = true, Area = new Region(1.8, 1.8, 36.3, 40.2) };
+        Layout.Pack(new List<ViewGroup> { asmG }, usable, obstacles);
+        Check("assembly top view rises beside the header", asmG.Box.Y1 > 33 && asmG.Box.Y0 < 4, B(asmG.Box) + " 1:" + (1 / asmG.Scale).ToString("0.#"));
+        Check("assembly views clear of the header", asmG.Parts().All(q => !q.R.Overlaps(obstacles[3])));
 
         Console.WriteLine(_failed == 0 ? "All passed." : _failed + " failed.");
         return _failed == 0 ? 0 : 1;

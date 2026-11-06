@@ -58,7 +58,7 @@ namespace AutoDraw.Drawing
             {
                 new Region(W * 0.62, bottom, right, top + 0.3),
                 new Region(W * 0.62, bottom, W * 0.655, H * 0.27),     // the Opmerking / Datum / Check / Rev column left of it
-                new Region(W * 0.42, bottom, W * 0.62, H * 0.065)      // "Ordernummer: …" at the bottom
+                new Region(0, bottom, W * 0.62, H * 0.065)             // "Ordernummer: …": the strip along the bottom stays free
             };
             Obstacles.AddRange(CornerTexts(sheetTop, borderRight));
             try
