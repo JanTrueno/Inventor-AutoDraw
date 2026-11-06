@@ -23,6 +23,13 @@ namespace AutoDraw.Drawing
 
         public readonly List<string> Warnings = new List<string>();
 
+        /// <summary>Called before each sheet: sheets done, total, and the sheet's document and kind.</summary>
+        public Action<int, int, string> OnSheet;
+        /// <summary>Called for the steps within a sheet (views, parts list, dimensions).</summary>
+        public Action<string> OnDetail;
+
+        private void Detail(string text) { try { OnDetail?.Invoke(text); } catch { } }
+
         public DrawingBuilder(Inventor.Application app, AppSettings settings)
         {
             _app = app;
@@ -61,6 +68,7 @@ namespace AutoDraw.Drawing
                     SheetJob job = jobs[i];
                     Sheet sheet = drawing.Sheets[i + 1];
                     progress("Sheet " + job.SheetNo + " of " + jobs.Count + ": " + job.Node.Name);
+                    try { OnSheet?.Invoke(i, jobs.Count, job.Node.Name + "  (" + DocKinds.Label(job.Node.Kind) + (job.Parts > 1 ? ", sheet " + (job.Part + 1) + " of " + job.Parts : "") + ")"); } catch { }
                     try { sheet.Name = job.Node.Name; } catch { }
                     try
                     {
@@ -77,6 +85,7 @@ namespace AutoDraw.Drawing
                 }
                 try { drawing.Sheets[1].Activate(); } catch { }
 
+                try { OnSheet?.Invoke(jobs.Count, jobs.Count, ""); } catch { }
                 progress("Saving…");
                 string folder = Path.GetDirectoryName(((Document)main).FullFileName) ?? "";
                 string path = Naming.DrawingPath(folder, order, root.Name, DateTime.Now);
@@ -270,6 +279,7 @@ namespace AutoDraw.Drawing
             og.Area = new Region(f.Usable.X0, f.Usable.Y0, f.TitleBlock.X0 - 0.5, f.Usable.Y1);   // left of the title block column
             Arrange(f, WithPartsList(f, list), (ig, Views.Of(iso)), (og, v));
             AssemblyNotes.AddBalloons(_app, sheet, iso, asm);
+            Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, true);
             if (v.Below != null) d.Overall(v.Below, false, true);
@@ -289,6 +299,7 @@ namespace AutoDraw.Drawing
         {
             Views v = CreateOrtho(sheet, f, asm, Choose(DocKind.Assembly, asm), true, true);
             Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v));
+            Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, true);
             if (v.Below != null) d.Overall(v.Below, false, true);
@@ -313,6 +324,7 @@ namespace AutoDraw.Drawing
             Arrange(f, f.Obstacles, groups.ToArray());
 
             // the view that shows the bends as arcs is the profile: leg lengths and angles there, outside sizes everywhere
+            Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             DrawingView[] folded = new[] { v.Base, v.Below, v.Side }.Where(x => x != null).ToArray();
             DrawingView profile = folded.OrderByDescending(Dimensioner.ArcCount).First();
@@ -329,10 +341,11 @@ namespace AutoDraw.Drawing
             Views flat = CreateFlat(sheet, f, doc) ?? throw new InvalidOperationException("No flat view.");
             TangentEdges(flat.Base, flat.Side);
             Arrange(f, f.Obstacles, (MeasureFlat(flat, Corner.TopLeft), flat));
+            Detail("Dimensioning…");
             FlatDimensions(new Dimensioner(_app, sheet), flat);
         }
 
-        private static void FlatDimensions(Dimensioner d, Views flat)
+        private void FlatDimensions(Dimensioner d, Views flat)
         {
             d.Overall(flat.Base, true, true, 1);
             d.FlatPattern(flat.Base);
@@ -345,6 +358,7 @@ namespace AutoDraw.Drawing
             Views v = CreateOrtho(sheet, f, doc, Choose(DocKind.General, doc), true, true);
             DrawingView iso = CreateIso(sheet, f, doc);
             Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v), (MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
+            Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, true);
             if (v.Below != null) d.Overall(v.Below, false, true);
@@ -356,6 +370,7 @@ namespace AutoDraw.Drawing
             Views v = CreateOrtho(sheet, f, doc, Choose(DocKind.Lathe, doc), false, true);
             DrawingView iso = CreateIso(sheet, f, doc);
             Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v), (MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
+            Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, false);
             foreach (LinearGeneralDimension dia in d.Overall(v.Base, false, true)) Dimensioner.Diameter(dia);
@@ -367,6 +382,7 @@ namespace AutoDraw.Drawing
             Views v = CreateOrtho(sheet, f, doc, orient, false, true);
             DrawingView iso = CreateIso(sheet, f, doc);
             Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v), (MeasureSingle(iso, Corner.BottomLeft, 0.5, true), Views.Of(iso)));
+            Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, false);
             List<LinearGeneralDimension> h = d.Overall(v.Base, false, true);
@@ -448,6 +464,7 @@ namespace AutoDraw.Drawing
         /// <summary>Packs the groups and moves and scales their views to the places found.</summary>
         private void Arrange(SheetFrame f, IList<Region> obstacles, params (ViewGroup G, Views V)[] items)
         {
+            Detail("Fitting the views on the sheet…");
             if (!Layout.Pack(items.Select(i => i.G).ToList(), f.Usable, obstacles))
                 Log.Write("Views do not fit at the smallest scale.");
             foreach ((ViewGroup g, Views v) in items)
@@ -568,6 +585,7 @@ namespace AutoDraw.Drawing
         /// <summary>The base view with the projected view below it (first angle: the top view) and/or to its right (the left-side view).</summary>
         private Views CreateOrtho(Sheet sheet, SheetFrame f, Document doc, Orient o, bool top, bool side)
         {
+            Detail("Placing views…");
             double s = Guess(f, o.W + (side ? o.D : 0), o.H + (top ? o.D : 0));
             double cx = f.Usable.X0 + f.Usable.W * 0.3, cy = f.Usable.Y0 + f.Usable.H * 0.5;
             double off = (Math.Max(o.W, o.H) + o.D) * s;
@@ -602,6 +620,7 @@ namespace AutoDraw.Drawing
         /// <summary>An isometric view (top right), hidden lines removed.</summary>
         private DrawingView CreateIso(Sheet sheet, SheetFrame f, Document doc)
         {
+            Detail("Placing the iso view…");
             Box box = RangeOf(doc);
             double ex = box.MaxPoint.X - box.MinPoint.X, ey = box.MaxPoint.Y - box.MinPoint.Y, ez = box.MaxPoint.Z - box.MinPoint.Z;
             double s = Guess(f, 0.707 * (ex + ez), 0.816 * ey + 0.408 * (ex + ez));
@@ -616,6 +635,7 @@ namespace AutoDraw.Drawing
         /// </summary>
         private Views CreateFlat(Sheet sheet, SheetFrame f, Document doc)
         {
+            Detail("Placing the flat pattern…");
             if (!(doc is PartDocument p)) return null;
             Point2d at = P(f.Usable.X0 + f.Usable.W * 0.3, f.Usable.Y0 + f.Usable.H * 0.3);
             var v = new Views();

@@ -32,6 +32,7 @@ namespace AutoDraw.UI
         private List<DocNode> _all = new List<DocNode>();
 
         private readonly TreeGrid _grid;
+        private readonly ProgressPanel _progress;
         private readonly Label _title = new Label();
         private readonly FieldBox _order;
         private readonly FieldBox _template;
@@ -100,7 +101,9 @@ namespace AutoDraw.UI
             _grid.PlanChanged += Renumber;
             _grid.NodeSelected += ShowNode;
 
+            _progress = new ProgressPanel(_theme);
             Controls.Add(_grid);
+            Controls.Add(_progress);
             Controls.Add(BuildBottom());
             Controls.Add(BuildLeft());
 
@@ -125,7 +128,7 @@ namespace AutoDraw.UI
             _browse.Click += (s, e) => BrowseTemplate();
             _reload.Click += (s, e) => { if (!_busy && _main != null) LoadAssembly(_main); };
             _columns.Click += (s, e) => ColumnsMenu();
-            _generate.Click += (s, e) => { if (_busy) _cancel = true; else Generate(); };
+            _generate.Click += (s, e) => { if (_busy) { _cancel = true; _generate.Text = "Stopping…"; } else Generate(); };
             _close.Click += (s, e) => Close();
 
             _appEvents = app.ApplicationEvents;
@@ -341,12 +344,22 @@ namespace AutoDraw.UI
             _generate.Text = "Cancel";
             _close.Enabled = _reload.Enabled = false;
             var builder = new DrawingBuilder(_app, _settings);
+            ProgressPanel progress = _progress;
+            progress.Begin(jobs.Count);
+            builder.OnSheet = (done, total, what) =>
+            {
+                progress.SetProgress(done, total);
+                progress.SetStep(done < total ? "Sheet " + (done + 1) + " of " + total : "Saving the drawing…");
+                progress.SetDetail(what);
+            };
+            builder.OnDetail = d => { progress.SetDetail(d); Application.DoEvents(); };
             string path = null;
             try
             {
                 path = builder.Run(_main, _reader.Root, jobs, _all, _order.Text, s =>
                 {
                     SetStatus(s, false);
+                    if (!s.StartsWith("Sheet ")) progress.SetStep(s);
                     try { _app.StatusBarText = "AutoDraw: " + s; } catch { }
                     Application.DoEvents();
                 }, () => { Application.DoEvents(); return _cancel; });
@@ -363,6 +376,7 @@ namespace AutoDraw.UI
                 _generate.Text = "Generate drawing";
                 _close.Enabled = _reload.Enabled = true;
                 try { _app.StatusBarText = ""; } catch { }
+                progress.End();
                 _grid.RefreshValues();
             }
 
