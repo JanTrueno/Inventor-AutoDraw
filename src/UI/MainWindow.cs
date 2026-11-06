@@ -36,6 +36,9 @@ namespace AutoDraw.UI
         private readonly FieldBox _order;
         private readonly FieldBox _template;
         private readonly FieldBox _large;
+        private readonly FieldBox _drawingOrder;
+        private readonly FieldBox _rules;
+        private readonly ThemedCombo _up;
         private readonly PictureBox _thumb = new PictureBox();
         private readonly Label _info = new Label();
         private readonly Label _status = new Label();
@@ -82,6 +85,9 @@ namespace AutoDraw.UI
             _order = new FieldBox(_theme) { Dock = DockStyle.Top, Hint = "e.g. 160260496" };
             _template = new FieldBox(_theme) { Dock = DockStyle.Fill, Hint = "Choose an .idw template" };
             _large = new FieldBox(_theme) { Dock = DockStyle.Top };
+            _drawingOrder = new FieldBox(_theme) { Hint = "e.g. ordernummer (empty: none)" };
+            _rules = new FieldBox(_theme) { Hint = "external rule names, separated by ;" };
+            _up = new ThemedCombo(_theme);
             _generate = new InventorButton(_theme, "Generate drawing", true) { Size = new Size(140, 28) };
             _close = new InventorButton(_theme, "Close", false) { Size = new Size(90, 28) };
             _reload = new InventorButton(_theme, "Reload", false) { Size = new Size(90, 26) };
@@ -106,6 +112,16 @@ namespace AutoDraw.UI
             {
                 if (int.TryParse(_large.Text.Trim(), out int v) && v >= 1) { _settings.LargeAssemblyRows = v; _settings.Save(); Renumber(); }
             };
+            _drawingOrder.Text = _settings.DrawingOrderProperty;
+            _drawingOrder.TextChanged += (s, e) => { _settings.DrawingOrderProperty = _drawingOrder.Text.Trim(); _settings.Save(); };
+            _rules.Text = string.Join("; ", _settings.DrawingRules);
+            _rules.TextChanged += (s, e) =>
+            {
+                _settings.DrawingRules = _rules.Text.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(r => r.Trim()).Where(r => r.Length > 0).ToList();
+                _settings.Save();
+            };
+            _up.SetItems(new[] { "Z up (models standing on XY)", "Y up (Inventor default)" }, _settings.ZUp ? "Z up (models standing on XY)" : "Y up (Inventor default)", null);
+            _up.SelectedIndexChanged += (s, e) => { _settings.UpAxis = (_up.Value ?? "").StartsWith("Y") ? "Y" : "Z"; _settings.Save(); };
             _browse.Click += (s, e) => BrowseTemplate();
             _reload.Click += (s, e) => { if (!_busy && _main != null) LoadAssembly(_main); };
             _columns.Click += (s, e) => ColumnsMenu();
@@ -142,6 +158,18 @@ namespace AutoDraw.UI
             stack.Controls.Add(Caption("Two sheets for assemblies with more rows than", w));
             _large.Width = 60; _large.Dock = DockStyle.None;
             stack.Controls.Add(_large);
+
+            stack.Controls.Add(Caption("Model orientation", w));
+            _up.Width = w;
+            stack.Controls.Add(_up);
+
+            stack.Controls.Add(Caption("Order number also into drawing iProperty", w));
+            _drawingOrder.Size = new Size(w, 22);
+            stack.Controls.Add(_drawingOrder);
+
+            stack.Controls.Add(Caption("iLogic rules to run on the new drawing", w));
+            _rules.Size = new Size(w, 22);
+            stack.Controls.Add(_rules);
 
             var buttons = new FlowLayoutPanel { Size = new Size(w, 34), BackColor = _theme.Back, Margin = new Padding(0, 14, 0, 0) };
             buttons.Controls.Add(_reload);

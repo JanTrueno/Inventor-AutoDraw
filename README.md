@@ -20,6 +20,15 @@ part type, parts lists with balloons, overall dimensions and, on flat patterns, 
 - `ordernummer` on the main assembly, and every edited iProperty column.
 - Sheet names are the document names; sheet metal parts without a flat pattern get one.
 
+## Settings in the window
+
+- **Model orientation** – Z up (models standing on the XY plane, the default) or Y up (Inventor's default). All views,
+  the iso view included, are made with this axis pointing up.
+- **Order number also into drawing iProperty** – the new drawing gets the order number in this iProperty
+  (default `ordernummer`), so the title block shows it. Empty: none.
+- **iLogic rules to run on the new drawing** – external rule names, separated by `;`, run after saving; the drawing is
+  saved again afterwards.
+
 ## Sheets
 
 Order: main assembly → sub-assemblies → sheet metal folded → sheet metal flat → lathe parts → tubes → general,

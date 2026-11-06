@@ -48,6 +48,12 @@ namespace AutoDraw.Drawing
             bool done = false;
             try
             {
+                // the title block shows the drawing's own order number
+                if (!string.IsNullOrWhiteSpace(_settings.DrawingOrderProperty))
+                {
+                    try { Props.Set((Document)drawing, _settings.DrawingOrderProperty.Trim(), order.Trim()); }
+                    catch (Exception ex) { Warnings.Add("Drawing iProperty " + _settings.DrawingOrderProperty + ": " + ex.Message); }
+                }
                 PrepareSheets(drawing, jobs.Count);
                 for (int i = 0; i < jobs.Count; i++)
                 {
@@ -80,12 +86,43 @@ namespace AutoDraw.Drawing
                 finally { _app.SilentOperation = silent; }
                 drawing.Views.Add();   // show it
                 done = true;
+                RunRules((Document)drawing, progress);
                 return path;
             }
             finally
             {
                 if (!done) { try { drawing.Close(true); } catch { } }
             }
+        }
+
+        // ----- iLogic -----------------------------------------------------------------------------------------------
+
+        private const string ILogicId = "{3BDD8D79-2179-4B11-8A5A-257B1C0263AC}";
+
+        /// <summary>Runs the configured external iLogic rules on the new (saved, open) drawing, then saves it again.</summary>
+        private void RunRules(Document drawing, Action<string> progress)
+        {
+            List<string> rules = _settings.DrawingRules.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()).ToList();
+            if (rules.Count == 0) return;
+            object auto;
+            try { auto = _app.ApplicationAddIns.ItemById[ILogicId].Automation; }
+            catch (Exception ex) { Warnings.Add("iLogic is not available: " + ex.Message); return; }
+            foreach (string rule in rules)
+            {
+                progress("iLogic: " + rule + "…");
+                try { auto.GetType().InvokeMember("RunExternalRule", System.Reflection.BindingFlags.InvokeMethod, null, auto, new object[] { drawing, rule }); }
+                catch (Exception ex)
+                {
+                    Exception inner = ex.InnerException ?? ex;
+                    Log.Write("iLogic rule " + rule + " failed: " + inner);
+                    Warnings.Add("iLogic rule " + rule + ": " + inner.Message);
+                }
+            }
+            bool silent = _app.SilentOperation;
+            _app.SilentOperation = true;
+            try { drawing.Save(); }
+            catch (Exception ex) { Warnings.Add("Saving after the iLogic rules failed: " + ex.Message); }
+            finally { _app.SilentOperation = silent; }
         }
 
         // ----- iProperties ------------------------------------------------------------------------------------------
@@ -246,6 +283,8 @@ namespace AutoDraw.Drawing
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, true);
             if (v.Below != null) d.Overall(v.Below, false, true);
+            if (v.Side != null) d.Overall(v.Side, true, false);
+            foreach (DrawingView view in new[] { v.Base, v.Below, v.Side }.Where(x => x != null)) d.Angles(view);
             if (flat != null) FlatDimensions(d, flat);
         }
 
@@ -364,11 +403,50 @@ namespace AutoDraw.Drawing
         /// <summary>How the base view looks at the model: orientation, a 90° turn, and the model size across, up and into the view.</summary>
         private struct Orient
         {
-            public ViewOrientationTypeEnum O;
+            public ViewDir Dir;
             public bool Rotate;
             public double W, H, D;
             public bool Round;
         }
+
+        /// <summary>A view direction: where the eye is (seen from the model centre), which way is up, and the model axes across, up and into the view.</summary>
+        private sealed class ViewDir
+        {
+            public double[] Eye, Up;
+            public int HAxis, VAxis, DAxis;   // 0 = X, 1 = Y, 2 = Z
+        }
+
+        /// <summary>
+        /// Front, right, top and iso for the model's up axis (setting "UpAxis": Z for models built standing on XY, Y for
+        /// Inventor's default). Front looks at the model from the front (-Y when Z is up), right from +X, top from above.
+        /// </summary>
+        private ViewDir Front => _settings.ZUp ? new ViewDir { Eye = new[] { 0.0, -1, 0 }, Up = new[] { 0.0, 0, 1 }, HAxis = 0, VAxis = 2, DAxis = 1 }
+                                               : new ViewDir { Eye = new[] { 0.0, 0, 1 }, Up = new[] { 0.0, 1, 0 }, HAxis = 0, VAxis = 1, DAxis = 2 };
+        private ViewDir Right => _settings.ZUp ? new ViewDir { Eye = new[] { 1.0, 0, 0 }, Up = new[] { 0.0, 0, 1 }, HAxis = 1, VAxis = 2, DAxis = 0 }
+                                               : new ViewDir { Eye = new[] { 1.0, 0, 0 }, Up = new[] { 0.0, 1, 0 }, HAxis = 2, VAxis = 1, DAxis = 0 };
+        private ViewDir Top => _settings.ZUp ? new ViewDir { Eye = new[] { 0.0, 0, 1 }, Up = new[] { 0.0, 1, 0 }, HAxis = 0, VAxis = 1, DAxis = 2 }
+                                             : new ViewDir { Eye = new[] { 0.0, 1, 0 }, Up = new[] { 0.0, 0, -1 }, HAxis = 0, VAxis = 2, DAxis = 1 };
+        private ViewDir IsoDir => _settings.ZUp ? new ViewDir { Eye = new[] { 1.0, -1, 1 }, Up = new[] { 0.0, 0, 1 } }
+                                                : new ViewDir { Eye = new[] { 1.0, 1, 1 }, Up = new[] { 0.0, 1, 0 } };
+
+        /// <summary>A camera looking at the model's centre from <paramref name="dir"/>, for an arbitrary-orientation base view.</summary>
+        private Camera CameraFor(Document doc, ViewDir dir)
+        {
+            Box b = RangeOf(doc);
+            double cx = (b.MinPoint.X + b.MaxPoint.X) / 2, cy = (b.MinPoint.Y + b.MaxPoint.Y) / 2, cz = (b.MinPoint.Z + b.MaxPoint.Z) / 2;
+            double r = Math.Max(10, b.MinPoint.DistanceTo(b.MaxPoint)) * 3;
+            double n = Math.Sqrt(dir.Eye[0] * dir.Eye[0] + dir.Eye[1] * dir.Eye[1] + dir.Eye[2] * dir.Eye[2]);
+            Camera cam = _app.TransientObjects.CreateCamera();
+            cam.Target = _tg.CreatePoint(cx, cy, cz);
+            cam.Eye = _tg.CreatePoint(cx + dir.Eye[0] / n * r, cy + dir.Eye[1] / n * r, cz + dir.Eye[2] / n * r);
+            cam.UpVector = _tg.CreateUnitVector(dir.Up[0], dir.Up[1], dir.Up[2]);
+            try { cam.Perspective = false; } catch { }
+            return cam;
+        }
+
+        private DrawingView AddView(Sheet sheet, Document doc, Point2d at, double scale, ViewDir dir) =>
+            sheet.DrawingViews.AddBaseView((_Document)doc, at, scale, ViewOrientationTypeEnum.kArbitraryViewOrientation, Lines, "",
+                CameraFor(doc, dir), Type.Missing);
 
         private static Box RangeOf(Document doc)
         {
@@ -381,33 +459,32 @@ namespace AutoDraw.Drawing
         /// wide (so the base view shows the long side; up stays up). Tubes and lathe parts are looked at from the side
         /// with their length or axis horizontal: the view direction is the shortest of the other two model axes.
         /// </summary>
-        private static Orient Choose(DocKind kind, Document doc)
+        private Orient Choose(DocKind kind, Document doc)
         {
             Box box = RangeOf(doc);
-            double ex = box.MaxPoint.X - box.MinPoint.X, ey = box.MaxPoint.Y - box.MinPoint.Y, ez = box.MaxPoint.Z - box.MinPoint.Z;
-            var o = new Orient { O = ez > ex * 1.05 ? ViewOrientationTypeEnum.kRightViewOrientation : ViewOrientationTypeEnum.kFrontViewOrientation };
-            ModelAxis axis = ModelAxis.None;
+            double[] e = { box.MaxPoint.X - box.MinPoint.X, box.MaxPoint.Y - box.MinPoint.Y, box.MaxPoint.Z - box.MinPoint.Z };
+            ViewDir front = Front, right = Right, top = Top;
+            var o = new Orient { Dir = e[right.HAxis] > e[front.HAxis] * 1.05 ? right : front };
+
             if ((kind == DocKind.Lathe || kind == DocKind.Tube) && doc is PartDocument part)
             {
                 KindDetector.Shape s = KindDetector.Analyse(part.ComponentDefinition);
                 o.Round = s.Rotational;
-                axis = kind == DocKind.Lathe && s.RotationAxis != ModelAxis.None ? s.RotationAxis : s.LongAxis;
+                ModelAxis axis = kind == DocKind.Lathe && s.RotationAxis != ModelAxis.None ? s.RotationAxis : s.LongAxis;
+                int a = axis == ModelAxis.X ? 0 : axis == ModelAxis.Y ? 1 : 2;
+                // the length or axis horizontal; of the views that do that, the one looking along the thinner other side
+                ViewDir best = null;
+                foreach (ViewDir d in new[] { front, right, top })
+                    if (d.HAxis == a && (best == null || e[d.DAxis] < e[best.DAxis])) best = d;
+                if (best != null) o.Dir = best;
+                else
+                {
+                    foreach (ViewDir d in new[] { front, right, top })
+                        if (d.VAxis == a && (best == null || e[d.DAxis] < e[best.DAxis])) best = d;
+                    if (best != null) { o.Dir = best; o.Rotate = true; }
+                }
             }
-            switch (axis)
-            {
-                case ModelAxis.X: o.O = ez <= ey ? ViewOrientationTypeEnum.kFrontViewOrientation : ViewOrientationTypeEnum.kTopViewOrientation; break;
-                case ModelAxis.Y: o.O = ez <= ex ? ViewOrientationTypeEnum.kFrontViewOrientation : ViewOrientationTypeEnum.kRightViewOrientation; o.Rotate = true; break;
-                case ModelAxis.Z:
-                    if (ex <= ey) o.O = ViewOrientationTypeEnum.kRightViewOrientation;
-                    else { o.O = ViewOrientationTypeEnum.kTopViewOrientation; o.Rotate = true; }
-                    break;
-            }
-            switch (o.O)
-            {
-                case ViewOrientationTypeEnum.kTopViewOrientation: o.W = ex; o.H = ez; o.D = ey; break;
-                case ViewOrientationTypeEnum.kRightViewOrientation: o.W = ez; o.H = ey; o.D = ex; break;
-                default: o.W = ex; o.H = ey; o.D = ez; break;
-            }
+            o.W = e[o.Dir.HAxis]; o.H = e[o.Dir.VAxis]; o.D = e[o.Dir.DAxis];
             if (o.Rotate) (o.W, o.H) = (o.H, o.W);
             return o;
         }
@@ -428,7 +505,7 @@ namespace AutoDraw.Drawing
             double s = Guess(f, o.W + (side ? o.D : 0), o.H + (below ? o.D : 0));
             double cx = f.Usable.X0 + f.Usable.W * 0.3, cy = f.Usable.Y0 + f.Usable.H * 0.6;
             var v = new Views();
-            v.Base = sheet.DrawingViews.AddBaseView((_Document)doc, P(cx, cy), s, o.O, Lines, "", Type.Missing, Type.Missing);
+            v.Base = AddView(sheet, doc, P(cx, cy), s, o.Dir);
             Tidy(v.Base);
             if (o.Rotate) { try { v.Base.Rotation = Math.PI / 2; } catch (Exception ex) { Log.Write("Rotating the view failed: " + ex.Message); } }
             double off = (Math.Max(o.W, o.H) + o.D) * s;
@@ -451,8 +528,7 @@ namespace AutoDraw.Drawing
             Box box = RangeOf(doc);
             double ex = box.MaxPoint.X - box.MinPoint.X, ey = box.MaxPoint.Y - box.MinPoint.Y, ez = box.MaxPoint.Z - box.MinPoint.Z;
             double s = Guess(f, 0.707 * (ex + ez), 0.816 * ey + 0.408 * (ex + ez));
-            DrawingView v = sheet.DrawingViews.AddBaseView((_Document)doc, P(f.Usable.X1 - f.Usable.W * 0.2, f.Usable.Y1 - f.Usable.H * 0.2), s,
-                ViewOrientationTypeEnum.kIsoTopRightViewOrientation, Lines, "", Type.Missing, Type.Missing);
+            DrawingView v = AddView(sheet, doc, P(f.Usable.X1 - f.Usable.W * 0.2, f.Usable.Y1 - f.Usable.H * 0.2), s, IsoDir);
             Tidy(v);
             return v;
         }

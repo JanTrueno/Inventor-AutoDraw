@@ -32,11 +32,13 @@ namespace AutoDraw.Drawing
             H = sheet.Height;
             double m = Math.Max(1.0, 0.025 * W);
             double x0 = m, y0 = m, x1 = W - m, y1 = H - m;
+            double borderRight = W - m * 0.4, borderBottom = m * 0.4;
             try
             {
                 Box2d b = sheet.Border?.RangeBox;
                 if (b != null && b.MaxPoint.X - b.MinPoint.X > W * 0.5)
                 {
+                    borderRight = b.MaxPoint.X; borderBottom = b.MinPoint.Y;
                     x0 = b.MinPoint.X + 0.8; y0 = b.MinPoint.Y + 0.8; x1 = b.MaxPoint.X - 0.8; y1 = b.MaxPoint.Y - 0.8;
                 }
             }
@@ -48,11 +50,12 @@ namespace AutoDraw.Drawing
             // The company title block's range box also holds texts far from the block itself (it covers nearly the
             // whole sheet), so it is only trusted when it looks like a corner block; otherwise the block is taken to be
             // the bottom-right 38 % × 21 % of the sheet, as on the J. Blom Opmeer A2 sheets.
-            double right = x1 + Math.Max(1.5, 0.03 * W), bottom = y0 - 0.8;
-            TitleBlock = new Region(W * 0.62, bottom, right, H * 0.21);
+            double right = borderRight, bottom = borderBottom;
+            double top = TitleBlockTop(sheet, borderBottom) ?? H * 0.195;
+            TitleBlock = new Region(W * 0.62, bottom, right, top);
             Obstacles = new List<Region>
             {
-                TitleBlock,
+                new Region(W * 0.62, bottom, right, top + 0.3),
                 new Region(W * 0.62, bottom, W * 0.655, H * 0.27),     // the Opmerking / Datum / Check / Rev column left of it
                 new Region(W * 0.42, bottom, W * 0.62, H * 0.065)      // "Ordernummer: …" at the bottom
             };
@@ -70,6 +73,38 @@ namespace AutoDraw.Drawing
                 }
             }
             catch { }
+        }
+
+        /// <summary>
+        /// The top of the title block at its right-hand edge (where the parts list stands on it), from the lines of the
+        /// title block definition: the block sits on the bottom border line, so its height is added to the border bottom.
+        /// Null when the lines cannot be read.
+        /// </summary>
+        private double? TitleBlockTop(Sheet sheet, double borderBottom)
+        {
+            try
+            {
+                TitleBlock tb = sheet.TitleBlock;
+                if (tb == null) return null;
+                var pts = new List<(double X, double Y)>();
+                foreach (SketchLine l in tb.Definition.Sketch.SketchLines)
+                {
+                    Point2d a = l.StartSketchPoint.Geometry, b = l.EndSketchPoint.Geometry;
+                    pts.Add((a.X, a.Y)); pts.Add((b.X, b.Y));
+                }
+                if (pts.Count < 4) return null;
+                double maxX = double.MinValue, minY = double.MaxValue;
+                foreach (var p in pts) { if (p.X > maxX) maxX = p.X; if (p.Y < minY) minY = p.Y; }
+                double topRight = double.MinValue;
+                foreach (var p in pts) if (Math.Abs(p.X - maxX) < 0.05 && p.Y > topRight) topRight = p.Y;
+                double top = borderBottom + (topRight - minY);
+                return top > 0.05 * H && top < 0.4 * H ? top : (double?)null;
+            }
+            catch (Exception ex)
+            {
+                Core.Log.Write("Reading the title block lines failed: " + ex.Message);
+                return null;
+            }
         }
 
         /// <summary>Areas no view may overlap: the title block and the texts next to it.</summary>

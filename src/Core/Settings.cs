@@ -18,6 +18,17 @@ namespace AutoDraw.Core
         public string QuantityProperty { get; set; } = "Aantal";
         public List<string> SheetNumberProperties { get; set; } = new List<string> { "bewerking", "bewerkingBlad" };
 
+        /// <summary>The model's up axis, "Z" (models standing on the XY plane) or "Y" (Inventor's default).</summary>
+        public string UpAxis { get; set; } = "Z";
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool ZUp => !string.Equals(UpAxis, "Y", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>The iProperty of the new drawing that gets the order number (the title block shows it); empty = none.</summary>
+        public string DrawingOrderProperty { get; set; } = "ordernummer";
+
+        /// <summary>External iLogic rules (names as in the iLogic browser) run on the new drawing before it is saved.</summary>
+        public List<string> DrawingRules { get; set; } = new List<string>();
+
         /// <summary>An assembly with more parts list rows than this gets two sheets.</summary>
         public int LargeAssemblyRows { get; set; } = 15;
 

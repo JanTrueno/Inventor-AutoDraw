@@ -121,7 +121,118 @@ namespace AutoDraw.Drawing
         {
             if (a == null || b == null) return null;
             try { return _dims.AddLinear(text, a, b, type, true, Type.Missing, Type.Missing); }
-            catch (Exception ex) { Log.Write("Dimension failed: " + ex.Message); return null; }
+            catch (Exception ex)
+            {
+                Log.Write("Dimension failed (" + type + ", " + Describe(a) + " → " + Describe(b) + ", text at " +
+                    text.X.ToString("0.0") + "," + text.Y.ToString("0.0") + "): " + ex.Message);
+                return null;
+            }
+        }
+
+        private static string Describe(GeometryIntent i)
+        {
+            try
+            {
+                string what = i.Geometry is DrawingCurve c ? c.ProjectedCurveType + "/" + c.EdgeType : i.Geometry?.GetType().Name ?? "?";
+                string at = i.Intent is PointIntentEnum p ? p.ToString() : i.Intent == null ? "curve" : i.Intent.ToString();
+                return what + " " + at;
+            }
+            catch { return "?"; }
+        }
+
+        /// <summary>
+        /// Angle dimensions between flanges that are not square to each other (as 135° in a profile view): for each
+        /// pair of edge directions that meet at an angle other than 90°, the two nearest edges get an angle dimension,
+        /// its text inside the angle between them.
+        /// </summary>
+        public void Angles(DrawingView view, int max = 8)
+        {
+            List<Curve> lines = Read(view).Where(k => k.IsLine && IsOutline(k)).ToList();
+            double diag = Math.Sqrt(view.Width * view.Width + view.Height * view.Height);
+            double minLen = Math.Max(0.3, diag * 0.03);
+            var edges = lines.Select(k => (K: k, Len: Math.Sqrt((k.EX - k.SX) * (k.EX - k.SX) + (k.EY - k.SY) * (k.EY - k.SY))))
+                .Where(e => e.Len >= minLen)
+                .Select(e => (e.K, e.Len, Dir: Norm(Math.Atan2(e.K.EY - e.K.SY, e.K.EX - e.K.SX))))
+                .ToList();
+
+            // directions, 0.5° apart
+            var dirs = new List<double>();
+            foreach (var e in edges.OrderByDescending(e => e.Len))
+                if (!dirs.Any(d => AngleBetween(d, e.Dir) < 0.5 * Math.PI / 180)) dirs.Add(e.Dir);
+
+            int made = 0;
+            for (int i = 0; i < dirs.Count && made < max; i++)
+                for (int j = i + 1; j < dirs.Count && made < max; j++)
+                {
+                    double between = AngleBetween(dirs[i], dirs[j]) * 180 / Math.PI;   // 0..90
+                    if (between < 1 || Math.Abs(between - 90) < 1) continue;
+                    var a = edges.Where(e => AngleBetween(e.Dir, dirs[i]) < 0.01).ToList();
+                    var b = edges.Where(e => AngleBetween(e.Dir, dirs[j]) < 0.01).ToList();
+                    double best = double.MaxValue;
+                    (Curve A, Curve B) pair = (null, null);
+                    foreach (var ea in a)
+                        foreach (var eb in b)
+                        {
+                            double d = EndGap(ea.K, eb.K);
+                            if (d < best) { best = d; pair = (ea.K, eb.K); }
+                        }
+                    if (pair.A == null || best > Math.Max(1.0, diag * 0.08)) continue;
+                    if (AddAngle(pair.A, pair.B)) made++;
+                }
+        }
+
+        private bool AddAngle(Curve a, Curve b)
+        {
+            // where the two edge lines cross, and from there towards the far end of each edge
+            double dax = a.EX - a.SX, day = a.EY - a.SY, dbx = b.EX - b.SX, dby = b.EY - b.SY;
+            double den = dax * dby - day * dbx;
+            if (Math.Abs(den) < 1e-9) return false;
+            double t = ((b.SX - a.SX) * dby - (b.SY - a.SY) * dbx) / den;
+            double px = a.SX + t * dax, py = a.SY + t * day;
+            (double ux, double uy) = Away(a, px, py);
+            (double vx, double vy) = Away(b, px, py);
+            double bx = ux + vx, by = uy + vy, bl = Math.Sqrt(bx * bx + by * by);
+            if (bl < 1e-9) return false;
+            Point2d text = _tg.CreatePoint2d(px + bx / bl * 1.4, py + by / bl * 1.4);
+            try
+            {
+                _dims.AddAngular(text, _sheet.CreateGeometryIntent(a.C, Type.Missing), _sheet.CreateGeometryIntent(b.C, Type.Missing),
+                    Type.Missing, false, true, false, Type.Missing, Type.Missing);
+                return true;
+            }
+            catch (Exception ex) { Log.Write("Angle dimension failed: " + ex.Message); return false; }
+        }
+
+        /// <summary>The unit direction from (px, py) towards the end of the edge farthest from it.</summary>
+        private static (double, double) Away(Curve k, double px, double py)
+        {
+            double ds = (k.SX - px) * (k.SX - px) + (k.SY - py) * (k.SY - py), de = (k.EX - px) * (k.EX - px) + (k.EY - py) * (k.EY - py);
+            double x = (de > ds ? k.EX : k.SX) - px, y = (de > ds ? k.EY : k.SY) - py, l = Math.Sqrt(x * x + y * y);
+            return l < 1e-9 ? (0, 0) : (x / l, y / l);
+        }
+
+        private static double EndGap(Curve a, Curve b)
+        {
+            double best = double.MaxValue;
+            foreach (var p in new[] { (a.SX, a.SY), (a.EX, a.EY) })
+                foreach (var q in new[] { (b.SX, b.SY), (b.EX, b.EY) })
+                    best = Math.Min(best, Math.Sqrt((p.Item1 - q.Item1) * (p.Item1 - q.Item1) + (p.Item2 - q.Item2) * (p.Item2 - q.Item2)));
+            return best;
+        }
+
+        /// <summary>A line direction folded into [0, π).</summary>
+        private static double Norm(double a)
+        {
+            while (a < 0) a += Math.PI;
+            while (a >= Math.PI) a -= Math.PI;
+            return a;
+        }
+
+        /// <summary>The angle between two line directions, 0..π/2.</summary>
+        private static double AngleBetween(double a, double b)
+        {
+            double d = Math.Abs(a - b) % Math.PI;
+            return Math.Min(d, Math.PI - d);
         }
 
         /// <summary>Overall width (above the view) and/or height (left of the view). Returns the dimensions made.</summary>
