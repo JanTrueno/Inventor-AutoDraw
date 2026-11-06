@@ -116,6 +116,18 @@ internal static class CoreTests
         Layout.Pack(new List<ViewGroup> { plate }, usable, obstacles);
         Check("plate 680x80 gets 1:2 or larger", plate.Scale >= 0.5 - 1e-9, "1:" + (1 / plate.Scale).ToString("0.#"));
 
+        // mixing_tank_Z6: the fixed sheet metal arrangement
+        var z6Flat = new ViewGroup { BW = 55.6, BH = 55.6, EdgeW = 0.3, SideLeft = false, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
+        var z6Ortho = new ViewGroup { BW = 45, BH = 4, BelowH = 45, SideW = 45, Prefer = Corner.TopRight, FillY = true, AlignRight = true, MaxExtraX = 3 };
+        var z6Iso = new ViewGroup { BW = 63, BH = 42, Prefer = Corner.BottomRight, Flexible = true, MarginL = 0.5, MarginR = 0.5, MarginT = 0.5, MarginB = 0.5 };
+        bool z6 = Layout.Pack(new List<ViewGroup> { z6Flat, z6Ortho, z6Iso }, usable, obstacles);
+        Check("Z6 packs", z6, "1:" + (1 / z6Ortho.Scale).ToString("0.#"));
+        Check("Z6 folded views on the right", z6Ortho.Box.X1 > usable.X1 - 5, z6Ortho.Box.X1.ToString("0.0"));
+        Check("Z6 top view at the top", z6Ortho.Box.Y1 > usable.Y1 - 1.5, z6Ortho.Box.Y1.ToString("0.0"));
+        Check("Z6 iso bottom right, below the folded views", z6Iso.Box.X0 > 30 && z6Iso.Box.Y1 <= z6Ortho.Box.Y0 + 1e-6 && z6Iso.Box.Y0 < 16,
+            z6Iso.Box.X0.ToString("0.0") + "," + z6Iso.Box.Y0.ToString("0.0"));
+        Check("Z6 nothing overlaps", !z6Flat.Box.Overlaps(z6Ortho.Box) && !z6Iso.Box.Overlaps(z6Ortho.Box) && !z6Iso.Box.Overlaps(z6Flat.Box) && obstacles.All(o => !o.Overlaps(z6Ortho.Box) && !o.Overlaps(z6Iso.Box) && !o.Overlaps(z6Flat.Box)));
+
         Console.WriteLine(_failed == 0 ? "All passed." : _failed + " failed.");
         return _failed == 0 ? 0 : 1;
     }

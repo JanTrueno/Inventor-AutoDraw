@@ -318,10 +318,14 @@ namespace AutoDraw.Drawing
             Views flat = CreateFlat(sheet, f, doc);
             TangentEdges(v.Base, v.Below, v.Side, iso);
             var groups = new List<(ViewGroup, Views)>();
-            // first the flat pattern in its corner, then the folded views, the iso view in what is left
+            // the same on every sheet metal sheet: the flat pattern bottom left, the iso view bottom right (above the
+            // title block), the folded views top right - top view at the top, front view down to the iso view, side
+            // view left of the front view
             if (flat != null) groups.Add((MeasureFlat(flat), flat));
-            groups.Add((Measure(v, Corner.TopLeft), v));
-            groups.Add((MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
+            ViewGroup og = Measure(v, Corner.TopRight);
+            og.FillY = true; og.AlignRight = true; og.MaxExtraX = 3;
+            groups.Add((og, v));
+            groups.Add((MeasureSingle(iso, Corner.BottomRight, 0.5, true), Views.Of(iso)));
             Arrange(f, f.Obstacles, groups.ToArray());
 
             // the view that shows the bends as arcs is the profile: leg lengths and angles there, outside sizes everywhere
@@ -341,7 +345,7 @@ namespace AutoDraw.Drawing
         {
             Views flat = CreateFlat(sheet, f, doc) ?? throw new InvalidOperationException("No flat view.");
             TangentEdges(flat.Base, flat.Side);
-            Arrange(f, f.Obstacles, (MeasureFlat(flat, Corner.TopLeft), flat));
+            Arrange(f, f.Obstacles, (MeasureFlat(flat), flat));   // bottom left, as on the folded sheets
             Detail("Dimensioning…");
             FlatDimensions(new Dimensioner(_app, sheet), flat);
         }

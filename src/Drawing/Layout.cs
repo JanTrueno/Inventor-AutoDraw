@@ -18,7 +18,10 @@ namespace AutoDraw.Drawing
         public double BelowH;          // height of the top view, placed above the base view (its width is BW); 0 = none
         public double SideW;           // width of the right view, placed right of the base view (its height is BH); 0 = none
         public double MarginL = 2.5, MarginR = 0.5, MarginT = 2.5, MarginB = 0.5, Gap = 3.0;
-        public double ExtraX, ExtraY;  // extra room between the views, added when spreading out (side view / top view)
+        public double ExtraX, ExtraY;
+        public bool FillY;             // spreading: the top view goes to the top and the base view as low as it can
+        public bool AlignRight;        // spreading: against the right instead of centred
+        public double MaxExtraX = 10;  // spreading: at most this much extra between side and base view  // extra room between the views, added when spreading out (side view / top view)
         private double GapX => Gap + ExtraX;
         private double GapY => Gap + ExtraY;
         public Corner Prefer = Corner.TopLeft;
@@ -105,8 +108,8 @@ namespace AutoDraw.Drawing
             }
             double free = right - left - b.W;
             if (free <= 0.01) return;
-            if (g.HasSide) { double add = Math.Min(free * 0.5, 10); g.ExtraX += add; free -= add; }
-            g.X0 = left + free / 2;
+            if (g.HasSide) { double add = Math.Min(free * 0.5, g.MaxExtraX); g.ExtraX += add; free -= add; }
+            g.X0 = g.AlignRight ? left + free : left + free / 2;
         }
 
         /// <summary>Up and down: from the nearest thing below to the nearest above, within the group's width.</summary>
@@ -121,8 +124,8 @@ namespace AutoDraw.Drawing
             }
             double free = top - bottom - b.H;
             if (free <= 0.01) return;
-            if (extra && g.HasBelow) { double add = Math.Min(free * 0.5, 10); g.ExtraY += add; free -= add; }
-            g.Y1 = top - free * AboveShare;   // a bit above the middle: a third of the room above, two thirds below
+            if (extra && g.HasBelow) { double add = g.FillY ? free : Math.Min(free * 0.5, 10); g.ExtraY += add; free -= add; }
+            g.Y1 = top - free * (g.FillY ? 0 : AboveShare);   // a bit above the middle: a third of the room above, two thirds below
         }
 
         private static bool TryAt(IList<ViewGroup> groups, double s, Region usable, IList<Region> obstacles)
