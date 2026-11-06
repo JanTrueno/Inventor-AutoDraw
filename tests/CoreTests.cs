@@ -116,10 +116,23 @@ internal static class CoreTests
         Layout.Pack(new List<ViewGroup> { plate }, usable, obstacles);
         Check("plate 680x80 gets 1:2 or larger", plate.Scale >= 0.5 - 1e-9, "1:" + (1 / plate.Scale).ToString("0.#"));
 
+        // the same zones for a tall folded part (mixing_tank_Z3/Z2 sizes): iso bottom right as well
+        var z3Flat = new ViewGroup { BW = 100.7, BH = 45.7, EdgeW = 0.2, SideLeft = false, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
+        var z3Ortho = new ViewGroup { BW = 45.7, BH = 86, BelowH = 21.7, SideW = 21.7, Prefer = Corner.TopRight, FillY = true, AlignRight = true, MaxExtraX = 3 };
+        var z3Iso = new ViewGroup { BW = 32.5, BH = 88.6, Prefer = Corner.BottomRight, Flexible = true, MarginL = 0.5, MarginR = 0.5, MarginT = 0.5, MarginB = 0.5 };
+        Layout.SheetMetalZones(usable, 36.8, obstacles, z3Flat, z3Ortho, z3Iso);
+        bool z3 = Layout.Pack(new List<ViewGroup> { z3Flat, z3Ortho, z3Iso }, usable, obstacles);
+        Check("Z3 packs in the zones", z3, "1:" + (1 / z3Ortho.Scale).ToString("0.#") + ", flat 1:" + (1 / z3Flat.Scale).ToString("0.#") + ", iso 1:" + (1 / z3Iso.Scale).ToString("0.#"));
+        Func<Region, string> B = r => $"({r.X0:0.0},{r.Y0:0.0})-({r.X1:0.0},{r.Y1:0.0})";
+        Check("Z3 iso bottom right", z3Iso.Box.X0 > 34 && z3Iso.Box.Y1 <= z3Ortho.Box.Y0 + 1e-6, "iso " + B(z3Iso.Box) + " folded " + B(z3Ortho.Box) + " flat " + B(z3Flat.Box));
+        Check("Z3 flat bottom left", Math.Abs(z3Flat.Box.X0 - usable.X0) < 1e-6 && z3Flat.Box.Y0 < 5);
+        Check("Z3 folded views top right, clear of the flat pattern", (z3Ortho.Box.Y0 >= z3Flat.Box.Y1 - 1e-6 || z3Ortho.Box.X0 >= z3Flat.Box.X1 - 1e-6) && z3Ortho.Box.X1 > usable.X1 - 5 && z3Ortho.Box.Y1 > usable.Y1 - 1.5);
+
         // mixing_tank_Z6: the fixed sheet metal arrangement
         var z6Flat = new ViewGroup { BW = 55.6, BH = 55.6, EdgeW = 0.3, SideLeft = false, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
         var z6Ortho = new ViewGroup { BW = 45, BH = 4, BelowH = 45, SideW = 45, Prefer = Corner.TopRight, FillY = true, AlignRight = true, MaxExtraX = 3 };
         var z6Iso = new ViewGroup { BW = 63, BH = 42, Prefer = Corner.BottomRight, Flexible = true, MarginL = 0.5, MarginR = 0.5, MarginT = 0.5, MarginB = 0.5 };
+        Layout.SheetMetalZones(usable, 36.8, obstacles, z6Flat, z6Ortho, z6Iso);
         bool z6 = Layout.Pack(new List<ViewGroup> { z6Flat, z6Ortho, z6Iso }, usable, obstacles);
         Check("Z6 packs", z6, "1:" + (1 / z6Ortho.Scale).ToString("0.#"));
         Check("Z6 folded views on the right", z6Ortho.Box.X1 > usable.X1 - 5, z6Ortho.Box.X1.ToString("0.0"));

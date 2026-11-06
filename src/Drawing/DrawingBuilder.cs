@@ -321,11 +321,14 @@ namespace AutoDraw.Drawing
             // the same on every sheet metal sheet: the flat pattern bottom left, the iso view bottom right (above the
             // title block), the folded views top right - top view at the top, front view down to the iso view, side
             // view left of the front view
-            if (flat != null) groups.Add((MeasureFlat(flat), flat));
+            ViewGroup fg = flat != null ? MeasureFlat(flat) : null;
             ViewGroup og = Measure(v, Corner.TopRight);
             og.FillY = true; og.AlignRight = true; og.MaxExtraX = 3;
+            ViewGroup ig = MeasureSingle(iso, Corner.BottomRight, 0.5, true);
+            if (fg != null) groups.Add((fg, flat));
             groups.Add((og, v));
-            groups.Add((MeasureSingle(iso, Corner.BottomRight, 0.5, true), Views.Of(iso)));
+            groups.Add((ig, Views.Of(iso)));
+            SheetMetalZones(f, fg, og, ig);
             Arrange(f, f.Obstacles, groups.ToArray());
 
             // the view that shows the bends as arcs is the profile: leg lengths and angles there, outside sizes everywhere
@@ -362,7 +365,8 @@ namespace AutoDraw.Drawing
         {
             Views v = CreateOrtho(sheet, f, doc, Choose(DocKind.General, doc), true, true);
             DrawingView iso = CreateIso(sheet, f, doc);
-            Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v), (MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
+            (ViewGroup og, ViewGroup ig) = PartZones(f, v, iso);
+            Arrange(f, f.Obstacles, (og, v), (ig, Views.Of(iso)));
             Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, true);
@@ -374,7 +378,8 @@ namespace AutoDraw.Drawing
         {
             Views v = CreateOrtho(sheet, f, doc, Choose(DocKind.Lathe, doc), false, true);
             DrawingView iso = CreateIso(sheet, f, doc);
-            Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v), (MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
+            (ViewGroup og, ViewGroup ig) = PartZones(f, v, iso);
+            Arrange(f, f.Obstacles, (og, v), (ig, Views.Of(iso)));
             Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, false);
@@ -386,7 +391,8 @@ namespace AutoDraw.Drawing
             Orient orient = Choose(DocKind.Tube, doc);
             Views v = CreateOrtho(sheet, f, doc, orient, false, true);
             DrawingView iso = CreateIso(sheet, f, doc);
-            Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v), (MeasureSingle(iso, Corner.BottomLeft, 0.5, true), Views.Of(iso)));
+            (ViewGroup og, ViewGroup ig) = PartZones(f, v, iso);
+            Arrange(f, f.Obstacles, (og, v), (ig, Views.Of(iso)));
             Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             d.Overall(v.Base, true, false);
@@ -431,6 +437,26 @@ namespace AutoDraw.Drawing
             g.MarginT = 3.2; g.MarginL = 3.2; g.MarginB = 2.5; g.MarginR = 0.5; g.Gap = 4.0;
             return g;
         }
+
+        // ----- zones: the same arrangement on every sheet of a kind -------------------------------------------------
+
+        /// <summary>Left of the title block column, the full height.</summary>
+        private static Region LeftZone(SheetFrame f) => new Region(f.Usable.X0, f.Usable.Y0, f.TitleBlock.X0 - 1.0, f.Usable.Y1);
+
+        /// <summary>From the title block column to the right edge, the full height (the title block itself is an obstacle).</summary>
+        private static Region RightZone(SheetFrame f) => new Region(f.TitleBlock.X0, f.Usable.Y0, f.Usable.X1, f.Usable.Y1);
+
+        /// <summary>General, lathe and tube parts: the views in the left zone, the iso view right, above the title block.</summary>
+        private static (ViewGroup, ViewGroup) PartZones(SheetFrame f, Views v, DrawingView iso)
+        {
+            ViewGroup og = Measure(v, Corner.TopLeft), ig = MeasureSingle(iso, Corner.BottomRight, 0.5, true);
+            og.Area = LeftZone(f);
+            ig.Area = RightZone(f);
+            return (og, ig);
+        }
+
+        private static void SheetMetalZones(SheetFrame f, ViewGroup fg, ViewGroup og, ViewGroup ig) =>
+            Layout.SheetMetalZones(f.Usable, f.TitleBlock.X0, f.Obstacles, fg, og, ig);
 
         /// <summary>Above the parts list, from its left edge to the right of the usable area.</summary>
         private static Region? AbovePartsList(SheetFrame f, PartsList list)

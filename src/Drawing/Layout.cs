@@ -21,7 +21,7 @@ namespace AutoDraw.Drawing
         public double ExtraX, ExtraY;
         public bool FillY;             // spreading: the top view goes to the top and the base view as low as it can
         public bool AlignRight;        // spreading: against the right instead of centred
-        public double MaxExtraX = 10;  // spreading: at most this much extra between side and base view  // extra room between the views, added when spreading out (side view / top view)
+        public double MaxExtraX = 10;  // spreading: at most this much extra between side and base view
         private double GapX => Gap + ExtraX;
         private double GapY => Gap + ExtraY;
         public Corner Prefer = Corner.TopLeft;
@@ -31,6 +31,7 @@ namespace AutoDraw.Drawing
         public double EdgeW;           // width of an edge view placed RIGHT of the base view (flat pattern thickness); 0 = none
         public bool Fixed;             // against the left edge, as low as possible (the flat pattern: bottom left); not spread out
         public Region? Area;           // keep inside this area instead of the whole usable area (iso above the parts list)
+        public ViewGroup Under;        // keep below this group (sheet metal iso: below the folded views, not beside them)
 
         public double Scale;           // result
         public double X0, Y1;          // result: top-left corner of the box
@@ -65,6 +66,7 @@ namespace AutoDraw.Drawing
 
         public static bool Pack(IList<ViewGroup> groups, Region usable, IList<Region> obstacles, double maxScale = 10)
         {
+            foreach (ViewGroup g in groups) { g.ExtraX = 0; g.ExtraY = 0; }   // a fresh start when packed again
             foreach (double s in Scales.Standard.Where(x => x <= maxScale + 1e-9))
                 if (TryAt(groups, s, usable, obstacles)) { Spread(groups, usable, obstacles); return true; }
 
@@ -93,13 +95,37 @@ namespace AutoDraw.Drawing
             }
         }
 
+        /// <summary>
+        /// Sheet metal, the same on every sheet: the flat pattern bottom left (in the column left of the title block),
+        /// the folded views top right as large as they fit, the iso view in the right-hand column below them, above
+        /// the title block. <paramref name="columnX"/> is the left edge of the title block column.
+        /// </summary>
+        public static void SheetMetalZones(Region u, double columnX, IList<Region> obstacles, ViewGroup fg, ViewGroup og, ViewGroup ig)
+        {
+            if (fg != null) fg.Area = new Region(u.X0, u.Y0, columnX - 1.0, u.Y1);
+            og.Area = null;
+            og.Prefer = Corner.TopRight;
+            ig.Area = new Region(columnX - 2.0, u.Y0, u.X1, u.Y1);
+            ig.Prefer = Corner.BottomRight;
+            ig.Under = og;
+        }
+
+        /// <summary>The area a group must stay in: its own area, and below the group it belongs under once that is placed.</summary>
+        private static Region AreaOf(ViewGroup g, IList<ViewGroup> groups, Region usable)
+        {
+            Region area = g.Area ?? usable;
+            if (g.Under != null && groups.IndexOf(g.Under) >= 0 && groups.IndexOf(g.Under) < groups.IndexOf(g))
+                area = new Region(area.X0, area.Y0, area.X1, Math.Min(area.Y1, g.Under.Box.Y0 - Spacing));
+            return area;
+        }
+
         private static List<Region> Others(ViewGroup g, IList<ViewGroup> groups, IList<Region> obstacles) =>
             obstacles.Concat(groups.Where(o => o != g).Select(o => o.Box)).ToList();
 
         /// <summary>Across: from the nearest thing on the left to the nearest on the right, within the group's height.</summary>
         private static void SpreadX(ViewGroup g, IList<ViewGroup> groups, Region usable, IList<Region> obstacles)
         {
-            Region area = g.Area ?? usable, b = g.Box;
+            Region area = AreaOf(g, groups, usable), b = g.Box;
             double left = area.X0, right = area.X1;
             foreach (Region o in Others(g, groups, obstacles).Where(o => o.Y0 < b.Y1 && b.Y0 < o.Y1))
             {
@@ -115,13 +141,16 @@ namespace AutoDraw.Drawing
         /// <summary>Up and down: from the nearest thing below to the nearest above, within the group's width.</summary>
         private static void SpreadY(ViewGroup g, IList<ViewGroup> groups, Region usable, IList<Region> obstacles, bool extra)
         {
-            Region area = g.Area ?? usable, b = g.Box;
+            Region area = AreaOf(g, groups, usable), b = g.Box;
             double bottom = area.Y0, top = area.Y1;
             foreach (Region o in Others(g, groups, obstacles).Where(o => o.X0 < b.X1 && b.X0 < o.X1))
             {
                 if (o.Y1 <= b.Y0 + 1e-6) bottom = Math.Max(bottom, o.Y1 + Spacing);
                 else if (o.Y0 >= b.Y1 - 1e-6) top = Math.Min(top, o.Y0 - Spacing);
             }
+            // a group that belongs under this one keeps its row, also where it is not straight below
+            foreach (ViewGroup h in groups.Where(h => h.Under == g))
+                bottom = Math.Max(bottom, h.Box.Y1 + Spacing);
             double free = top - bottom - b.H;
             if (free <= 0.01) return;
             if (extra && g.HasBelow) { double add = g.FillY ? free : Math.Min(free * 0.5, 10); g.ExtraY += add; free -= add; }
@@ -134,10 +163,9 @@ namespace AutoDraw.Drawing
             foreach (ViewGroup g in groups)
             {
                 bool ok = false;
-                IEnumerable<double> scales = g.Flexible
-                    ? new[] { s, Scales.Below(s), Scales.Below(Scales.Below(s)) }
-                    : new[] { s };
-                Region area = g.Area ?? usable;
+                // an iso view may be up to five standard scales smaller than the other views
+                IEnumerable<double> scales = g.Flexible ? Scales.Standard.Where(x => x <= s + 1e-12).Take(6) : new[] { s };
+                Region area = AreaOf(g, groups, usable);
                 foreach (double gs in scales)
                 {
                     (double w, double h) = g.Size(gs);
