@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="Inventor" Name="AutoDraw" Description="Generates a multi-sheet production drawing for an assembly" AppVersion="0.1.0" FriendlyVersion="0.1.0" ProductType="Application" SupportedLocales="Enu" AppNameSpace="local.autodraw" Author="Local" ProductCode="{c6129aa9-6793-4b72-9a91-3f2c8142cf29}" UpgradeCode="{8734336f-f645-4ba0-9c74-07a81a97c837}">
+  <CompanyDetails Name="Local" />
+  <RuntimeRequirements />
+  <Components Description="AutoDraw for Inventor 2025">
+    <RuntimeRequirements OS="Win64" Platform="Inventor" SeriesMin="Ir29" SeriesMax="Ir29" />
+    <ComponentEntry AppName="AutoDraw" Version="0.1.0" ModuleName="./Contents/2025/AutoDraw.Inventor.addin" AppDescription="AutoDraw" />
+  </Components>
+</ApplicationPackage>

@@ -1,0 +1,71 @@
+using System;
+using Inventor;
+
+namespace AutoDraw.Drawing
+{
+    /// <summary>A rectangle on the sheet, in centimetres.</summary>
+    internal struct Region
+    {
+        public double X0, Y0, X1, Y1;
+        public Region(double x0, double y0, double x1, double y1) { X0 = x0; Y0 = y0; X1 = Math.Max(x0, x1); Y1 = Math.Max(y0, y1); }
+        public double W => X1 - X0;
+        public double H => Y1 - Y0;
+        public double CX => (X0 + X1) / 2;
+        public double CY => (Y0 + Y1) / 2;
+        public bool Overlaps(Region o) => X0 < o.X1 && o.X0 < X1 && Y0 < o.Y1 && o.Y0 < Y1;
+    }
+
+    /// <summary>
+    /// The free area of a sheet: inside the border, below the header band (part name, material and sheet number at the
+    /// top) and outside the title block. Layouts are given as fractions of that area.
+    /// </summary>
+    internal sealed class SheetFrame
+    {
+        public readonly double W, H;
+        public readonly Region Usable;
+        public readonly Region TitleBlock;
+
+        public SheetFrame(Sheet sheet)
+        {
+            W = sheet.Width;
+            H = sheet.Height;
+            double m = Math.Max(1.0, 0.025 * W);
+            double x0 = m, y0 = m, x1 = W - m, y1 = H - m;
+            try
+            {
+                Box2d b = sheet.Border?.RangeBox;
+                if (b != null && b.MaxPoint.X - b.MinPoint.X > W * 0.5)
+                {
+                    x0 = b.MinPoint.X + 0.8; y0 = b.MinPoint.Y + 0.8; x1 = b.MaxPoint.X - 0.8; y1 = b.MaxPoint.Y - 0.8;
+                }
+            }
+            catch { }
+            double header = Math.Max(2.5, 0.13 * H);   // "4x part" / material / bewerking, and the sheet number
+            Usable = new Region(x0, y0, x1, y1 - header);
+
+            TitleBlock = new Region(W * 0.52, 0, W, H * 0.24);
+            try
+            {
+                Box2d tb = sheet.TitleBlock?.RangeBox;
+                if (tb != null) TitleBlock = new Region(tb.MinPoint.X, tb.MinPoint.Y, tb.MaxPoint.X, tb.MaxPoint.Y);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// A region from fractions of the usable area; raised above the title block when it would overlap it.
+        /// </summary>
+        public Region Part(double fx0, double fy0, double fx1, double fy1)
+        {
+            var r = new Region(Usable.X0 + fx0 * Usable.W, Usable.Y0 + fy0 * Usable.H, Usable.X0 + fx1 * Usable.W, Usable.Y0 + fy1 * Usable.H);
+            if (r.Overlaps(TitleBlock))
+            {
+                // the title block sits in a corner: keep the region beside it when that leaves most of it, else above it
+                double besideW = TitleBlock.X0 - 0.5 - r.X0;
+                if (besideW > r.W * 0.7) r = new Region(r.X0, r.Y0, TitleBlock.X0 - 0.5, r.Y1);
+                else r = new Region(r.X0, Math.Min(r.Y1 - 1, TitleBlock.Y1 + 0.5), r.X1, r.Y1);
+            }
+            return r;
+        }
+    }
+}

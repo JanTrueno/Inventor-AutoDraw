@@ -1,0 +1,15 @@
+<Addin Type="Standard">
+  <ClassId>{0091494e-410a-4cc7-bffc-1248d26c64bd}</ClassId>
+  <ClientId>{0091494e-410a-4cc7-bffc-1248d26c64bd}</ClientId>
+  <DisplayName>AutoDraw</DisplayName>
+  <Description>Generates one multi-sheet production drawing for an assembly: a sheet per part and sub-assembly, with views, parts lists and dimensions.</Description>
+  <Assembly>AutoDraw.dll</Assembly>
+  <LoadOnStartUp>1</LoadOnStartUp>
+  <UserUnloadable>1</UserUnloadable>
+  <Hidden>0</Hidden>
+  <SupportedSoftwareVersionGreaterThan>28..</SupportedSoftwareVersionGreaterThan>
+  <SupportedSoftwareVersionLessThan>30..</SupportedSoftwareVersionLessThan>
+  <DataVersion>1</DataVersion>
+  <UserInterfaceVersion>1</UserInterfaceVersion>
+  <LoadBehavior>1</LoadBehavior>
+</Addin>

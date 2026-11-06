@@ -1,0 +1,46 @@
+# AutoDraw for Inventor 2025
+
+Makes the production drawing of an assembly: one `.idw` with a sheet for every part and sub-assembly, views per
+part type, parts lists with balloons, overall dimensions and, on flat patterns, bend dimensions and bend notes.
+
+## Use
+
+1. Open the main assembly and click **AutoDraw** on the **Assemble** tab.
+2. The AutoDraw window opens (a normal window: move it to a second screen if you like).
+3. Check the **order number** (`ordernummer` iProperty of the assembly) and choose the **drawing template** once.
+4. In the tree: tick the documents that get a sheet, change a detected **Type** if it is wrong, edit **Aantal**, the
+   **Sheets** of an assembly or any added iProperty column (**Columns…**).
+5. **Generate drawing**. The drawing is saved next to the assembly as `<ordernummer>_<assembly>_<y-M-d>.idw`
+   (`_2`, `_3` … when that name is taken) and opened.
+
+## What it writes
+
+- `Aantal` – total quantity of the document in the main assembly (or the value typed in the tree).
+- `bewerking` and `bewerkingBlad` – the sheet number, `010`.
+- `ordernummer` on the main assembly, and every edited iProperty column.
+- Sheet names are the document names; sheet metal parts without a flat pattern get one.
+
+## Sheets
+
+Order: main assembly → sub-assemblies → sheet metal folded → sheet metal flat → lathe parts → tubes → general,
+alphabetical within each type. Content Center parts are in a closed, unticked group at the bottom.
+
+| Type | Sheet |
+|---|---|
+| Assembly (≤ 15 rows) | front, top, side, iso with balloons, parts list on the title block, overall dimensions |
+| Assembly (> 15 rows) | sheet 1: iso + parts list + balloons; sheet 2: front/top/side with overall dimensions; sheets 3+: one front view |
+| Sheet metal folded | folded front/top/side + iso, flat pattern with edge view: overall, chain bend dimensions, bend notes, hole notes |
+| Sheet metal flat | flat pattern + edge view (thickness), overall dimensions, hole notes |
+| Lathe part | side view with the axis horizontal, end view, iso; length and Ø |
+| Tube / profile | long view, end view, iso; length and profile size (Ø for round tubes) |
+| General | front, top, side, iso; overall dimensions |
+
+Scales are standard scales picked to fit; the sheet size comes from the template.
+
+## Build / install
+
+```
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+Close Inventor first when updating. Settings: `%APPDATA%\AutoDraw\settings.json`; log: `%LOCALAPPDATA%\AutoDraw\log.txt`.
