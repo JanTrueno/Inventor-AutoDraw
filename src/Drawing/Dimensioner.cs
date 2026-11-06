@@ -19,12 +19,14 @@ namespace AutoDraw.Drawing
         private readonly Sheet _sheet;
         private readonly TransientGeometry _tg;
         private readonly GeneralDimensions _dims;
+        private bool _updated;
 
         public Dimensioner(Inventor.Application app, Sheet sheet)
         {
             _sheet = sheet;
             _tg = app.TransientGeometry;
             _dims = sheet.DrawingDimensions.GeneralDimensions;
+            try { sheet.Update(); } catch { }   // the views were just placed: make their edges current before dimensioning
         }
 
         private sealed class Curve
@@ -129,6 +131,13 @@ namespace AutoDraw.Drawing
         {
             if (a == null || b == null) return null;
             try { return _dims.AddLinear(text, a, b, type, true, Type.Missing, Type.Missing); }
+            catch when (!_updated)
+            {
+                // views that were just moved or rescaled are not recalculated yet: update the sheet once and try again
+                _updated = true;
+                try { _sheet.Update(); } catch { }
+                return Linear(text, a, b, type);
+            }
             catch (Exception ex)
             {
                 Log.Write("Dimension failed (" + type + ", " + Describe(a) + " → " + Describe(b) + ", text at " +

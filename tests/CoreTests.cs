@@ -91,8 +91,18 @@ internal static class CoreTests
         Check("groups do not overlap", !ortho.Box.Overlaps(iso.Box));
         Check("nothing on the title block", obstacles.All(o => !o.Overlaps(ortho.Box) && !o.Overlaps(iso.Box)));
         Check("top view above the base view", ortho.BelowCY > ortho.BaseCY);
-        Check("right view right of the base view", ortho.SideCX > ortho.BaseCX);
-        var flatG = new ViewGroup { BW = 100, BH = 30, EdgeW = 0.2, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
+        Check("side view left of the base view", ortho.SideCX < ortho.BaseCX);
+
+        // mixing_tank_Z2: folded part 457 x 860 (top view 217 deep), flat pattern 1007 x 457, iso 325 x 886
+        var z2Flat = new ViewGroup { BW = 100.7, BH = 45.7, EdgeW = 0.2, SideLeft = false, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
+        var z2Iso = new ViewGroup { BW = 32.5, BH = 88.6, Prefer = Corner.TopRight, Flexible = true, MarginL = 0.5, MarginR = 0.5, MarginT = 0.5, MarginB = 0.5 };
+        var z2Ortho = new ViewGroup { BW = 45.7, BH = 86, BelowH = 21.7, SideW = 21.7 };
+        bool z2 = Layout.Pack(new List<ViewGroup> { z2Flat, z2Ortho, z2Iso }, usable, obstacles);
+        Check("Z2 packs at 1:5 or larger", z2 && z2Ortho.Scale >= 0.2 - 1e-9, "1:" + (1 / z2Ortho.Scale).ToString("0.#"));
+        Check("Z2 flat pattern bottom left", Math.Abs(z2Flat.Box.X0 - usable.X0) < 1e-6 && z2Flat.Box.Y0 < 5, z2Flat.Box.Y0.ToString("0.0"));
+        Check("Z2 groups apart", !z2Flat.Box.Overlaps(z2Ortho.Box) && !z2Iso.Box.Overlaps(z2Ortho.Box) && !z2Iso.Box.Overlaps(z2Flat.Box));
+        Check("Z2 nothing on obstacles", obstacles.All(o => !o.Overlaps(z2Flat.Box) && !o.Overlaps(z2Ortho.Box) && !o.Overlaps(z2Iso.Box)));
+        var flatG = new ViewGroup { BW = 100, BH = 30, EdgeW = 0.2, SideLeft = false, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
         var isoF = new ViewGroup { BW = 40, BH = 40, Prefer = Corner.TopRight, Flexible = true };
         var orthoF = new ViewGroup { BW = 60, BH = 100, BelowH = 30, SideW = 30 };
         Layout.Pack(new List<ViewGroup> { flatG, isoF, orthoF }, usable, obstacles);

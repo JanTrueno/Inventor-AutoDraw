@@ -20,8 +20,10 @@ namespace AutoDraw.Drawing
         public double MarginL = 2.5, MarginR = 0.5, MarginT = 2.5, MarginB = 0.5, Gap = 3.0;
         public Corner Prefer = Corner.TopLeft;
         public bool Flexible;          // may get a smaller scale than the other groups (iso views)
+        public bool TopAbove = true;   // the top view above the base view (third angle), else below it (first angle)
+        public bool SideLeft = true;   // the side view left of the base view, else right of it
         public double EdgeW;           // width of an edge view placed RIGHT of the base view (flat pattern thickness); 0 = none
-        public bool Fixed;             // only at its preferred corner (the flat pattern: always bottom left)
+        public bool Fixed;             // against the left edge, as low as possible (the flat pattern: bottom left)
         public Region? Area;           // keep inside this area instead of the whole usable area (iso above the parts list)
 
         public double Scale;           // result
@@ -34,12 +36,12 @@ namespace AutoDraw.Drawing
             MarginL + BW * s + (HasSide ? Gap + SideW * s : 0) + (EdgeW > 1e-6 ? Gap + EdgeW * s : 0) + MarginR,
             MarginT + BH * s + (HasBelow ? Gap + BelowH * s : 0) + MarginB);
 
-        private double BaseLeft => X0 + MarginL;
-        private double BaseTop => Y1 - MarginT - (HasBelow ? BelowH * Scale + Gap : 0);
+        private double BaseLeft => X0 + MarginL + (SideLeft && HasSide ? SideW * Scale + Gap : 0);
+        private double BaseTop => Y1 - MarginT - (TopAbove && HasBelow ? BelowH * Scale + Gap : 0);
         public double BaseCX => BaseLeft + BW * Scale / 2;
         public double BaseCY => BaseTop - BH * Scale / 2;
-        public double BelowCY => Y1 - MarginT - BelowH * Scale / 2;     // the top view, above the base view
-        public double SideCX => BaseLeft + BW * Scale + Gap + SideW * Scale / 2;   // the right view, right of the base view
+        public double BelowCY => TopAbove ? Y1 - MarginT - BelowH * Scale / 2 : BaseTop - BH * Scale - Gap - BelowH * Scale / 2;
+        public double SideCX => SideLeft ? X0 + MarginL + SideW * Scale / 2 : BaseLeft + BW * Scale + Gap + SideW * Scale / 2;
         public double EdgeCX => BaseLeft + BW * Scale + Gap + EdgeW * Scale / 2;   // the edge view, right of the base view
 
         public Region Box => new Region(X0, Y1 - Size(Scale).H, X0 + Size(Scale).W, Y1);
@@ -81,7 +83,7 @@ namespace AutoDraw.Drawing
                     (double w, double h) = g.Size(gs);
                     if (w > area.W || h > area.H) continue;
                     IEnumerable<(double X0, double Y1)> spots = Candidates(area, placed.Concat(obstacles).ToList(), w, h, g.Prefer);
-                    if (g.Fixed) spots = spots.Take(1);
+                    if (g.Fixed) spots = spots.Where(p => Math.Abs(p.X0 - area.X0) < 1e-6);   // against the left edge, as low as it fits
                     foreach ((double x0, double y1) in spots)
                     {
                         var r = new Region(x0, y1 - h, x0 + w, y1);
@@ -99,25 +101,29 @@ namespace AutoDraw.Drawing
             return true;
         }
 
-        /// <summary>Top-left corners to try for a w × h box, nearest to the preferred corner first.</summary>
-        private static IEnumerable<(double X0, double Y1)> Candidates(Region u, List<Region> placed, double w, double h, Corner prefer)
+        /// <summary>
+        /// Top-left corners to try for a w × h box: every combination of a horizontal position (area edges, just right
+        /// or left of each obstacle or placed box) and a vertical one (area edges, just below or above each of them),
+        /// kept inside the area, nearest to the preferred corner first.
+        /// </summary>
+        private static IEnumerable<(double X0, double Y1)> Candidates(Region u, List<Region> rects, double w, double h, Corner prefer)
         {
-            var c = new List<(double X0, double Y1)>
+            var xs = new List<double> { u.X0, u.X1 - w };
+            var ys = new List<double> { u.Y1, u.Y0 + h };
+            foreach (Region p in rects)
             {
-                (u.X0, u.Y1), (u.X1 - w, u.Y1), (u.X0, u.Y0 + h), (u.X1 - w, u.Y0 + h)
-            };
-            foreach (Region p in placed)
-            {
-                c.Add((p.X1 + Spacing, p.Y1));          // right of it, tops level
-                c.Add((p.X1 + Spacing, p.Y0 + h));      // right of it, bottoms level
-                c.Add((p.X0, p.Y0 - Spacing));          // below it, left sides level
-                c.Add((p.X1 - w, p.Y0 - Spacing));      // below it, right sides level
-                c.Add((u.X1 - w, p.Y0 - Spacing));      // below it, against the right edge
-                c.Add((u.X0, p.Y0 - Spacing));          // below it, against the left edge
+                xs.Add(p.X1 + Spacing); xs.Add(p.X0 - Spacing - w);
+                ys.Add(p.Y0 - Spacing); ys.Add(p.Y1 + Spacing + h);
             }
+            double Clamp(double v, double lo, double hi) => Math.Max(lo, Math.Min(hi, v));
+            var c = new HashSet<(double, double)>();
+            foreach (double x in xs)
+                foreach (double y in ys)
+                    c.Add((Math.Round(Clamp(x, u.X0, u.X1 - w), 4), Math.Round(Clamp(y, u.Y0 + h, u.Y1), 4)));
+
             double tx = prefer == Corner.TopLeft || prefer == Corner.BottomLeft ? u.X0 : u.X1;
             double ty = prefer == Corner.TopLeft || prefer == Corner.TopRight ? u.Y1 : u.Y0;
-            return c.OrderBy(p =>
+            return c.Select(p => (X0: p.Item1, Y1: p.Item2)).OrderBy(p =>
             {
                 double cx = prefer == Corner.TopLeft || prefer == Corner.BottomLeft ? p.X0 : p.X0 + w;
                 double cy = prefer == Corner.TopLeft || prefer == Corner.TopRight ? p.Y1 : p.Y1 - h;

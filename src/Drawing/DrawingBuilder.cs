@@ -318,9 +318,10 @@ namespace AutoDraw.Drawing
             Views flat = CreateFlat(sheet, f, doc);
             TangentEdges(v.Base, v.Below, v.Side, iso);
             var groups = new List<(ViewGroup, Views)>();
+            // first the flat pattern in its corner, then the folded views, the iso view in what is left
             if (flat != null) groups.Add((MeasureFlat(flat), flat));
-            groups.Add((MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
             groups.Add((Measure(v, Corner.TopLeft), v));
+            groups.Add((MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
             Arrange(f, f.Obstacles, groups.ToArray());
 
             // the view that shows the bends as arcs is the profile: leg lengths and angles there, outside sizes everywhere
@@ -396,6 +397,7 @@ namespace AutoDraw.Drawing
         private sealed class Views
         {
             public DrawingView Base, Below, Side;
+            public bool TopAbove = true;   // the top view (Below) sits above the base view
             public static Views Of(DrawingView single) => new Views { Base = single };
         }
 
@@ -403,7 +405,7 @@ namespace AutoDraw.Drawing
         private static ViewGroup Measure(Views v, Corner prefer)
         {
             double s = v.Base.Scale;
-            var g = new ViewGroup { BW = v.Base.Width / s, BH = v.Base.Height / s, Prefer = prefer };
+            var g = new ViewGroup { BW = v.Base.Width / s, BH = v.Base.Height / s, Prefer = prefer, TopAbove = v.TopAbove };
             if (v.Below != null) g.BelowH = v.Below.Height / s;
             if (v.Side != null) g.SideW = v.Side.Width / s;
             return g;
@@ -420,7 +422,7 @@ namespace AutoDraw.Drawing
         {
             // the edge view goes right of the flat pattern (not left, like the side view of the folded views)
             double s = flat.Base.Scale;
-            var g = new ViewGroup { BW = flat.Base.Width / s, BH = flat.Base.Height / s, Prefer = prefer, Fixed = prefer == Corner.BottomLeft };
+            var g = new ViewGroup { BW = flat.Base.Width / s, BH = flat.Base.Height / s, Prefer = prefer, Fixed = prefer == Corner.BottomLeft, SideLeft = false };
             g.EdgeW = flat.Side != null ? flat.Side.Width / s : 0;
             g.MarginT = 3.2; g.MarginL = 3.2; g.MarginB = 2.5; g.MarginR = 0.5; g.Gap = 4.0;
             return g;
@@ -587,29 +589,44 @@ namespace AutoDraw.Drawing
         {
             Detail("Placing views…");
             double s = Guess(f, o.W + (side ? o.D : 0), o.H + (top ? o.D : 0));
-            double cx = f.Usable.X0 + f.Usable.W * 0.3, cy = f.Usable.Y0 + f.Usable.H * 0.5;
+            double cx = f.Usable.X0 + f.Usable.W * 0.45, cy = f.Usable.Y0 + f.Usable.H * 0.45;
             double off = (Math.Max(o.W, o.H) + o.D) * s;
 
             // the base view; a tube or lathe part lying upright is turned by looking at it with its length as "right"
             double[] e = o.Dir.Eye, u = o.Dir.Up;
             if (o.Rotate) u = Cross(u, e);
-            double[] r = Cross(u, e);   // screen right of the base view
 
-            var v = new Views();
+            var v = new Views { TopAbove = !FirstAngle(sheet) };
             v.Base = AddView(sheet, doc, P(cx, cy), s, new ViewDir { Eye = e, Up = u });
             Tidy(v.Base);
-            // regular layout: the top view (looking down, front side facing the base view) above it, the right view right of it
+            // projected (linked) views: the top view (third angle: projected upwards; first angle: downwards) and the
+            // side view projected to the left
             if (top)
             {
-                try { v.Below = AddView(sheet, doc, P(cx, cy + off), s, new ViewDir { Eye = u, Up = Neg(e) }); Tidy(v.Below); }
+                try
+                {
+                    v.Below = sheet.DrawingViews.AddProjectedView(v.Base, P(cx, v.TopAbove ? cy + off : cy - off), DrawingViewStyleEnum.kFromBaseDrawingViewStyle, Type.Missing);
+                    Tidy(v.Below);
+                }
                 catch (Exception ex) { Log.Write("Top view failed: " + ex.Message); }
             }
             if (side)
             {
-                try { v.Side = AddView(sheet, doc, P(cx + off, cy), s, new ViewDir { Eye = r, Up = u }); Tidy(v.Side); }
-                catch (Exception ex) { Log.Write("Right view failed: " + ex.Message); }
+                try
+                {
+                    v.Side = sheet.DrawingViews.AddProjectedView(v.Base, P(cx - off, cy), DrawingViewStyleEnum.kFromBaseDrawingViewStyle, Type.Missing);
+                    Tidy(v.Side);
+                }
+                catch (Exception ex) { Log.Write("Side view failed: " + ex.Message); }
             }
             return v;
+        }
+
+        /// <summary>Does the drawing standard of the template use first-angle projection?</summary>
+        private static bool FirstAngle(Sheet sheet)
+        {
+            try { return ((DrawingDocument)sheet.Parent).StylesManager.ActiveStandardStyle.FirstAngleProjection; }
+            catch { return false; }
         }
 
         private static double[] Cross(double[] a, double[] b) =>
