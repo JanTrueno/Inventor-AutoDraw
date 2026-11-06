@@ -89,6 +89,7 @@ internal static class CoreTests
         Check("header box stays free", !ortho.Box.Overlaps(obstacles[3]) && !iso.Box.Overlaps(obstacles[3]));
         Check("tank ortho scale at least 1:8", ortho.Scale >= 1 / 8.0 - 1e-9, "1:" + (1 / ortho.Scale).ToString("0.#"));
         Check("groups do not overlap", !ortho.Box.Overlaps(iso.Box));
+        Check("tank views spread and inside", ortho.ExtraX > 0 && ortho.Box.X0 >= usable.X0 - 1e-6 && ortho.Box.X1 <= usable.X1 + 1e-6, ortho.ExtraX.ToString("0.0"));
         Check("nothing on the title block", obstacles.All(o => !o.Overlaps(ortho.Box) && !o.Overlaps(iso.Box)));
         Check("top view above the base view", ortho.BelowCY > ortho.BaseCY);
         Check("side view left of the base view", ortho.SideCX < ortho.BaseCX);
@@ -101,6 +102,7 @@ internal static class CoreTests
         Check("Z2 packs at 1:5 or larger", z2 && z2Ortho.Scale >= 0.2 - 1e-9, "1:" + (1 / z2Ortho.Scale).ToString("0.#"));
         Check("Z2 flat pattern bottom left", Math.Abs(z2Flat.Box.X0 - usable.X0) < 1e-6 && z2Flat.Box.Y0 < 5, z2Flat.Box.Y0.ToString("0.0"));
         Check("Z2 groups apart", !z2Flat.Box.Overlaps(z2Ortho.Box) && !z2Iso.Box.Overlaps(z2Ortho.Box) && !z2Iso.Box.Overlaps(z2Flat.Box));
+        Check("Z2 views spread out", z2Ortho.ExtraX > 0 || z2Ortho.ExtraY > 0, z2Ortho.ExtraX.ToString("0.0") + "/" + z2Ortho.ExtraY.ToString("0.0"));
         Check("Z2 nothing on obstacles", obstacles.All(o => !o.Overlaps(z2Flat.Box) && !o.Overlaps(z2Ortho.Box) && !o.Overlaps(z2Iso.Box)));
         var flatG = new ViewGroup { BW = 100, BH = 30, EdgeW = 0.2, SideLeft = false, Prefer = Corner.BottomLeft, Fixed = true, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
         var isoF = new ViewGroup { BW = 40, BH = 40, Prefer = Corner.TopRight, Flexible = true };
