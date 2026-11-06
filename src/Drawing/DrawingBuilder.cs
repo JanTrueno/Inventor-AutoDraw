@@ -189,103 +189,174 @@ namespace AutoDraw.Drawing
             }
         }
 
+
         // ----- layouts per kind ---------------------------------------------------------------------------------------
+        //
+        // Every layout first creates its views, then measures them (the real view boxes, not the model range box) and
+        // lets Layout.Pack find the largest standard scale at which all of them fit around the title block and parts
+        // list. Dimensions and balloons are added once the views are in their final place.
 
         private void AssemblySmall(Sheet sheet, SheetFrame f, AssemblyDocument asm)
         {
-            Ortho o = PlaceOrtho(sheet, (Document)asm, Choose(DocKind.Assembly, (Document)asm),
-                f.Part(0, 0.45, 0.42, 1), f.Part(0, 0, 0.42, 0.45), f.Part(0.42, 0.45, 0.58, 1));
-            PartsList list = AssemblyNotes.AddPartsList(_app, sheet, o.Base, f);
-            Region iso = f.Part(0.58, 0.55, 1, 1);
-            double top = AssemblyNotes.Top(list, f) + 0.8;
-            if (top > iso.Y0) iso = new Region(iso.X0, Math.Min(top, iso.Y1 - 4), iso.X1, iso.Y1);
-            DrawingView isoView = Iso(sheet, (Document)asm, iso);
-            AssemblyNotes.AddBalloons(_app, sheet, isoView, asm);
+            var doc = (Document)asm;
+            Views v = CreateOrtho(sheet, f, doc, Choose(DocKind.Assembly, doc), true, true);
+            DrawingView iso = CreateIso(sheet, f, doc);
+            PartsList list = AssemblyNotes.AddPartsList(_app, sheet, v.Base, f);
+            ViewGroup og = Measure(v, Corner.TopLeft), ig = MeasureSingle(iso, Corner.TopRight, 3.0, true);
+            Arrange(f, WithPartsList(f, list), (og, v), (ig, Views.Of(iso)));
+            AssemblyNotes.AddBalloons(_app, sheet, iso, asm);
             var d = new Dimensioner(_app, sheet);
-            d.Overall(o.Base, true, true);
-            if (o.Below != null) d.Overall(o.Below, false, true);
+            d.Overall(v.Base, true, true);
+            if (v.Below != null) d.Overall(v.Below, false, true);
         }
 
         private void AssemblyOverview(Sheet sheet, SheetFrame f, AssemblyDocument asm)
         {
-            DrawingView isoView = Iso(sheet, (Document)asm, f.Part(0, 0, 0.6, 1));
-            AssemblyNotes.AddPartsList(_app, sheet, isoView, f);
-            AssemblyNotes.AddBalloons(_app, sheet, isoView, asm);
+            DrawingView iso = CreateIso(sheet, f, (Document)asm);
+            PartsList list = AssemblyNotes.AddPartsList(_app, sheet, iso, f);
+            Arrange(f, WithPartsList(f, list), (MeasureSingle(iso, Corner.TopLeft, 3.0, false), Views.Of(iso)));
+            AssemblyNotes.AddBalloons(_app, sheet, iso, asm);
         }
 
         private void AssemblyViews(Sheet sheet, SheetFrame f, Document asm)
         {
-            Ortho o = PlaceOrtho(sheet, asm, Choose(DocKind.Assembly, asm), f.Part(0, 0.45, 0.6, 1), f.Part(0, 0, 0.6, 0.45), f.Part(0.6, 0.45, 1, 1));
+            Views v = CreateOrtho(sheet, f, asm, Choose(DocKind.Assembly, asm), true, true);
+            Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v));
             var d = new Dimensioner(_app, sheet);
-            d.Overall(o.Base, true, true);
-            if (o.Below != null) d.Overall(o.Below, false, true);
+            d.Overall(v.Base, true, true);
+            if (v.Below != null) d.Overall(v.Below, false, true);
         }
 
-        private void AssemblyExtra(Sheet sheet, SheetFrame f, Document asm) =>
-            PlaceOrtho(sheet, asm, Choose(DocKind.Assembly, asm), f.Part(0, 0, 1, 1), null, null);
+        private void AssemblyExtra(Sheet sheet, SheetFrame f, Document asm)
+        {
+            Views v = CreateOrtho(sheet, f, asm, Choose(DocKind.Assembly, asm), false, false);
+            Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v));
+        }
 
         private void Folded(Sheet sheet, SheetFrame f, Document doc)
         {
-            Ortho o = PlaceOrtho(sheet, doc, Choose(DocKind.SheetMetalFolded, doc),
-                f.Part(0.28, 0.62, 0.62, 1), f.Part(0.28, 0.42, 0.62, 0.62), f.Part(0, 0.62, 0.28, 1));
-            Iso(sheet, doc, f.Part(0.64, 0.55, 1, 1));
-            (DrawingView flat, DrawingView edge) = FlatViews(sheet, doc, f.Part(0, 0, 0.46, 0.42), f.Part(0.46, 0, 0.52, 0.42));
+            Views v = CreateOrtho(sheet, f, doc, Choose(DocKind.SheetMetalFolded, doc), true, true);
+            DrawingView iso = CreateIso(sheet, f, doc);
+            Views flat = CreateFlat(sheet, f, doc);
+            var groups = new List<(ViewGroup, Views)> { (Measure(v, Corner.TopLeft), v) };
+            if (flat != null) groups.Add((MeasureFlat(flat), flat));
+            groups.Add((MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
+            Arrange(f, f.Obstacles, groups.ToArray());
 
             var d = new Dimensioner(_app, sheet);
-            d.Overall(o.Base, true, true);
-            if (o.Below != null) d.Overall(o.Below, false, true);
-            if (flat != null)
-            {
-                d.Overall(flat, true, true, 1);
-                d.FlatPattern(flat);
-                d.HoleNotes(flat);
-            }
-            if (edge != null) d.Overall(edge, true, false);
+            d.Overall(v.Base, true, true);
+            if (v.Below != null) d.Overall(v.Below, false, true);
+            if (flat != null) FlatDimensions(d, flat);
         }
 
         private void Flat(Sheet sheet, SheetFrame f, Document doc)
         {
-            (DrawingView flat, DrawingView edge) = FlatViews(sheet, doc, f.Part(0, 0.25, 0.7, 1), f.Part(0.72, 0.25, 0.86, 1));
-            var d = new Dimensioner(_app, sheet);
-            if (flat != null)
-            {
-                d.Overall(flat, true, true);
-                d.HoleNotes(flat);
-            }
-            if (edge != null) d.Overall(edge, true, false);
+            Views flat = CreateFlat(sheet, f, doc) ?? throw new InvalidOperationException("No flat view.");
+            Arrange(f, f.Obstacles, (MeasureFlat(flat, Corner.TopLeft), flat));
+            FlatDimensions(new Dimensioner(_app, sheet), flat);
+        }
+
+        private static void FlatDimensions(Dimensioner d, Views flat)
+        {
+            d.Overall(flat.Base, true, true, 1);
+            d.FlatPattern(flat.Base);
+            d.HoleNotes(flat.Base);
+            if (flat.Side != null) d.Overall(flat.Side, true, false);
         }
 
         private void General(Sheet sheet, SheetFrame f, Document doc)
         {
-            Ortho o = PlaceOrtho(sheet, doc, Choose(DocKind.General, doc),
-                f.Part(0, 0.45, 0.55, 1), f.Part(0, 0, 0.55, 0.45), f.Part(0.55, 0.45, 0.72, 1));
-            Iso(sheet, doc, f.Part(0.72, 0.55, 1, 1));
+            Views v = CreateOrtho(sheet, f, doc, Choose(DocKind.General, doc), true, true);
+            DrawingView iso = CreateIso(sheet, f, doc);
+            Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v), (MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
             var d = new Dimensioner(_app, sheet);
-            d.Overall(o.Base, true, true);
-            if (o.Below != null) d.Overall(o.Below, false, true);
-            d.HoleNotes(o.Base);
+            d.Overall(v.Base, true, true);
+            if (v.Below != null) d.Overall(v.Below, false, true);
+            d.HoleNotes(v.Base);
         }
 
         private void Lathe(Sheet sheet, SheetFrame f, Document doc)
         {
-            Ortho o = PlaceOrtho(sheet, doc, Choose(DocKind.Lathe, doc),
-                f.Part(0, 0.3, 0.62, 1), null, f.Part(0.62, 0.45, 0.82, 1));
-            Iso(sheet, doc, f.Part(0.82, 0.55, 1, 1));
+            Views v = CreateOrtho(sheet, f, doc, Choose(DocKind.Lathe, doc), false, true);
+            DrawingView iso = CreateIso(sheet, f, doc);
+            Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v), (MeasureSingle(iso, Corner.TopRight, 0.5, true), Views.Of(iso)));
             var d = new Dimensioner(_app, sheet);
-            d.Overall(o.Base, true, false);
-            foreach (LinearGeneralDimension dia in d.Overall(o.Base, false, true)) Dimensioner.Diameter(dia);
+            d.Overall(v.Base, true, false);
+            foreach (LinearGeneralDimension dia in d.Overall(v.Base, false, true)) Dimensioner.Diameter(dia);
         }
 
         private void Tube(Sheet sheet, SheetFrame f, Document doc)
         {
             Orient orient = Choose(DocKind.Tube, doc);
-            Ortho o = PlaceOrtho(sheet, doc, orient, f.Part(0, 0.5, 0.8, 1), null, f.Part(0.8, 0.5, 1, 1));
-            Iso(sheet, doc, f.Part(0, 0, 0.5, 0.45));
+            Views v = CreateOrtho(sheet, f, doc, orient, false, true);
+            DrawingView iso = CreateIso(sheet, f, doc);
+            Arrange(f, f.Obstacles, (Measure(v, Corner.TopLeft), v), (MeasureSingle(iso, Corner.BottomLeft, 0.5, true), Views.Of(iso)));
             var d = new Dimensioner(_app, sheet);
-            d.Overall(o.Base, true, false);
-            List<LinearGeneralDimension> h = d.Overall(o.Base, false, true);
+            d.Overall(v.Base, true, false);
+            List<LinearGeneralDimension> h = d.Overall(v.Base, false, true);
             if (orient.Round) foreach (LinearGeneralDimension dia in h) Dimensioner.Diameter(dia);
-            else if (o.Side != null) d.Overall(o.Side, true, true, 0, true);
+            else if (v.Side != null) d.Overall(v.Side, true, true, 0, true);
+        }
+
+        // ----- box layout -------------------------------------------------------------------------------------------------
+
+        /// <summary>A base view with the projected view below it and the one to its right (either may be missing).</summary>
+        private sealed class Views
+        {
+            public DrawingView Base, Below, Side;
+            public static Views Of(DrawingView single) => new Views { Base = single };
+        }
+
+        /// <summary>The model size of the views (view size divided by scale), as one group for the layout.</summary>
+        private static ViewGroup Measure(Views v, Corner prefer)
+        {
+            double s = v.Base.Scale;
+            var g = new ViewGroup { BW = v.Base.Width / s, BH = v.Base.Height / s, Prefer = prefer };
+            if (v.Below != null) g.BelowH = v.Below.Height / s;
+            if (v.Side != null) g.SideW = v.Side.Width / s;
+            return g;
+        }
+
+        private static ViewGroup MeasureSingle(DrawingView view, Corner prefer, double margin, bool flexible) => new ViewGroup
+        {
+            BW = view.Width / view.Scale, BH = view.Height / view.Scale, Prefer = prefer, Flexible = flexible,
+            MarginL = margin, MarginR = margin, MarginT = margin, MarginB = margin
+        };
+
+        /// <summary>The flat pattern with its edge view: room around it for the overall and bend chain dimensions.</summary>
+        private static ViewGroup MeasureFlat(Views flat, Corner prefer = Corner.BottomLeft)
+        {
+            ViewGroup g = Measure(flat, prefer);
+            g.MarginT = 3.2; g.MarginL = 3.2; g.MarginB = 2.5; g.MarginR = 0.5; g.Gap = 4.0;
+            return g;
+        }
+
+        /// <summary>The title block, plus the parts list (from its left edge to the right side of the sheet).</summary>
+        private static List<Region> WithPartsList(SheetFrame f, PartsList list)
+        {
+            var obstacles = new List<Region>(f.Obstacles);
+            try
+            {
+                Box2d rb = list.RangeBox;
+                obstacles.Add(new Region(rb.MinPoint.X - 0.5, f.TitleBlock.Y0, f.W, rb.MaxPoint.Y + 0.5));
+            }
+            catch { }
+            return obstacles;
+        }
+
+        /// <summary>Packs the groups and moves and scales their views to the places found.</summary>
+        private void Arrange(SheetFrame f, IList<Region> obstacles, params (ViewGroup G, Views V)[] items)
+        {
+            if (!Layout.Pack(items.Select(i => i.G).ToList(), f.Usable, obstacles))
+                Log.Write("Views do not fit at the smallest scale.");
+            foreach ((ViewGroup g, Views v) in items)
+            {
+                try { if (Math.Abs(v.Base.Scale - g.Scale) > 1e-9) v.Base.Scale = g.Scale; }
+                catch (Exception ex) { Log.Write("Setting the scale failed: " + ex.Message); }
+                try { v.Base.Center = P(g.BaseCX, g.BaseCY); } catch (Exception ex) { Log.Write("Moving a view failed: " + ex.Message); }
+                if (v.Below != null) { try { v.Below.Center = P(g.BaseCX, g.BelowCY); } catch { } }
+                if (v.Side != null) { try { v.Side.Center = P(g.SideCX, g.BaseCY); } catch { } }
+            }
         }
 
         // ----- views ----------------------------------------------------------------------------------------------------
@@ -299,11 +370,6 @@ namespace AutoDraw.Drawing
             public bool Round;
         }
 
-        private sealed class Ortho
-        {
-            public DrawingView Base, Below, Side;
-        }
-
         private static Box RangeOf(Document doc)
         {
             if (doc is PartDocument p) return p.ComponentDefinition.RangeBox;
@@ -311,14 +377,15 @@ namespace AutoDraw.Drawing
         }
 
         /// <summary>
-        /// Front view for assemblies, sheet metal and general parts. Tubes and lathe parts are looked at from the side,
+        /// Assemblies, sheet metal and general parts: the front view, or the right view when the model is deeper than
+        /// wide (so the base view shows the long side; up stays up). Tubes and lathe parts are looked at from the side
         /// with their length or axis horizontal: the view direction is the shortest of the other two model axes.
         /// </summary>
         private static Orient Choose(DocKind kind, Document doc)
         {
             Box box = RangeOf(doc);
             double ex = box.MaxPoint.X - box.MinPoint.X, ey = box.MaxPoint.Y - box.MinPoint.Y, ez = box.MaxPoint.Z - box.MinPoint.Z;
-            var o = new Orient { O = ViewOrientationTypeEnum.kFrontViewOrientation };
+            var o = new Orient { O = ez > ex * 1.05 ? ViewOrientationTypeEnum.kRightViewOrientation : ViewOrientationTypeEnum.kFrontViewOrientation };
             ModelAxis axis = ModelAxis.None;
             if ((kind == DocKind.Lathe || kind == DocKind.Tube) && doc is PartDocument part)
             {
@@ -347,129 +414,85 @@ namespace AutoDraw.Drawing
 
         private Point2d P(double x, double y) => _tg.CreatePoint2d(x, y);
 
-        /// <summary>
-        /// The base view in <paramref name="baseR"/>, a projected view below it (first angle: the top view) and one to the
-        /// right (the left-side view), all at one standard scale that fits their regions.
-        /// </summary>
-        private Ortho PlaceOrtho(Sheet sheet, Document doc, Orient o, Region baseR, Region? belowR, Region? sideR)
-        {
-            double fit = Scales.Fit(o.W, o.H, baseR.W, baseR.H);
-            if (belowR.HasValue) fit = Math.Min(fit, Scales.Fit(o.W, o.D, baseR.W, belowR.Value.H));
-            if (sideR.HasValue) fit = Math.Min(fit, Scales.Fit(o.D, o.H, sideR.Value.W, baseR.H));
-            double scale = Scales.Snap(fit);
-
-            var r = new Ortho();
-            r.Base = sheet.DrawingViews.AddBaseView((_Document)doc, P(baseR.CX, baseR.CY), scale, o.O, Lines, "", Type.Missing, Type.Missing);
-            Tidy(r.Base);
-            if (o.Rotate) { try { r.Base.Rotation = Math.PI / 2; } catch (Exception ex) { Log.Write("Rotating the view failed: " + ex.Message); } }
-            if (belowR.HasValue)
-            {
-                try { r.Below = sheet.DrawingViews.AddProjectedView(r.Base, P(baseR.CX, belowR.Value.CY), DrawingViewStyleEnum.kFromBaseDrawingViewStyle, Type.Missing); Tidy(r.Below); }
-                catch (Exception ex) { Log.Write("Projected view below failed: " + ex.Message); }
-            }
-            if (sideR.HasValue)
-            {
-                try { r.Side = sheet.DrawingViews.AddProjectedView(r.Base, P(sideR.Value.CX, baseR.CY), DrawingViewStyleEnum.kFromBaseDrawingViewStyle, Type.Missing); Tidy(r.Side); }
-                catch (Exception ex) { Log.Write("Projected side view failed: " + ex.Message); }
-            }
-
-            // the real view sizes decide: one standard scale smaller as long as something sticks out of its region
-            for (int i = 0; i < 6; i++)
-            {
-                double over = Over(r.Base, baseR);
-                if (r.Below != null) over = Math.Max(over, Over(r.Below, new Region(baseR.X0, belowR.Value.Y0, baseR.X1, belowR.Value.Y1)));
-                if (r.Side != null) over = Math.Max(over, Over(r.Side, new Region(sideR.Value.X0, baseR.Y0, sideR.Value.X1, baseR.Y1)));
-                if (over <= 1) break;
-                double next = Math.Min(Scales.Below(r.Base.Scale), Scales.Snap(r.Base.Scale / over));
-                if (next >= r.Base.Scale) break;
-                r.Base.Scale = next;
-            }
-
-            try { r.Base.Center = P(baseR.CX, baseR.CY); } catch { }
-            if (r.Below != null) { try { r.Below.Center = P(r.Base.Center.X, belowR.Value.CY); } catch { } }
-            if (r.Side != null) { try { r.Side.Center = P(sideR.Value.CX, r.Base.Center.Y); } catch { } }
-            return r;
-        }
-
-        /// <summary>How far a view is too big for its region (1 = just fits, with room for dimensions).</summary>
-        private static double Over(DrawingView v, Region r, double fill = 0.85) =>
-            Math.Max(v.Width / (r.W * fill), v.Height / (r.H * fill));
-
         private static void Tidy(DrawingView v)
         {
             try { v.ShowLabel = false; } catch { }
         }
 
-        /// <summary>An isometric view (top right) at its own standard scale, filling <paramref name="r"/>.</summary>
-        private DrawingView Iso(Sheet sheet, Document doc, Region r)
+        /// <summary>A first guess of the scale from the model size, so the views are created at about the right size.</summary>
+        private static double Guess(SheetFrame f, double w, double h) => Scales.Snap(Scales.Fit(w, h, f.Usable.W * 0.6, f.Usable.H * 0.6));
+
+        /// <summary>The base view with the projected view below it (first angle: the top view) and/or to its right (the left-side view).</summary>
+        private Views CreateOrtho(Sheet sheet, SheetFrame f, Document doc, Orient o, bool below, bool side)
         {
-            Box box = RangeOf(doc);
-            double ex = box.MaxPoint.X - box.MinPoint.X, ey = box.MaxPoint.Y - box.MinPoint.Y, ez = box.MaxPoint.Z - box.MinPoint.Z;
-            double w = 0.707 * (ex + ez), h = 0.816 * ey + 0.408 * (ex + ez);
-            double scale = Scales.Snap(Scales.Fit(w, h, r.W, r.H, 0.9));
-            DrawingView v = sheet.DrawingViews.AddBaseView((_Document)doc, P(r.CX, r.CY), scale,
-                ViewOrientationTypeEnum.kIsoTopRightViewOrientation, Lines, "", Type.Missing, Type.Missing);
-            Tidy(v);
-            for (int i = 0; i < 6 && Over(v, r, 0.95) > 1; i++)
+            double s = Guess(f, o.W + (side ? o.D : 0), o.H + (below ? o.D : 0));
+            double cx = f.Usable.X0 + f.Usable.W * 0.3, cy = f.Usable.Y0 + f.Usable.H * 0.6;
+            var v = new Views();
+            v.Base = sheet.DrawingViews.AddBaseView((_Document)doc, P(cx, cy), s, o.O, Lines, "", Type.Missing, Type.Missing);
+            Tidy(v.Base);
+            if (o.Rotate) { try { v.Base.Rotation = Math.PI / 2; } catch (Exception ex) { Log.Write("Rotating the view failed: " + ex.Message); } }
+            double off = (Math.Max(o.W, o.H) + o.D) * s;
+            if (below)
             {
-                double next = Math.Min(Scales.Below(v.Scale), Scales.Snap(v.Scale / Over(v, r, 0.95)));
-                if (next >= v.Scale) break;
-                v.Scale = next;
+                try { v.Below = sheet.DrawingViews.AddProjectedView(v.Base, P(cx, cy - off), DrawingViewStyleEnum.kFromBaseDrawingViewStyle, Type.Missing); Tidy(v.Below); }
+                catch (Exception ex) { Log.Write("Projected view below failed: " + ex.Message); }
             }
-            try { v.Center = P(r.CX, r.CY); } catch { }
+            if (side)
+            {
+                try { v.Side = sheet.DrawingViews.AddProjectedView(v.Base, P(cx + off, cy), DrawingViewStyleEnum.kFromBaseDrawingViewStyle, Type.Missing); Tidy(v.Side); }
+                catch (Exception ex) { Log.Write("Projected side view failed: " + ex.Message); }
+            }
             return v;
         }
 
-        /// <summary>The flat pattern view in <paramref name="flatR"/> and its edge view (showing the thickness) to the right.</summary>
-        private (DrawingView, DrawingView) FlatViews(Sheet sheet, Document doc, Region flatR, Region edgeR)
+        /// <summary>An isometric view (top right), hidden lines removed.</summary>
+        private DrawingView CreateIso(Sheet sheet, SheetFrame f, Document doc)
         {
-            if (!(doc is PartDocument p)) throw new InvalidOperationException("Not a part.");
-            DrawingView flat;
+            Box box = RangeOf(doc);
+            double ex = box.MaxPoint.X - box.MinPoint.X, ey = box.MaxPoint.Y - box.MinPoint.Y, ez = box.MaxPoint.Z - box.MinPoint.Z;
+            double s = Guess(f, 0.707 * (ex + ez), 0.816 * ey + 0.408 * (ex + ez));
+            DrawingView v = sheet.DrawingViews.AddBaseView((_Document)doc, P(f.Usable.X1 - f.Usable.W * 0.2, f.Usable.Y1 - f.Usable.H * 0.2), s,
+                ViewOrientationTypeEnum.kIsoTopRightViewOrientation, Lines, "", Type.Missing, Type.Missing);
+            Tidy(v);
+            return v;
+        }
+
+        /// <summary>
+        /// The flat pattern (or, for a solid plate or sheet metal that cannot be unfolded, a view along its thinnest
+        /// side) with the edge view to its right showing the thickness.
+        /// </summary>
+        private Views CreateFlat(Sheet sheet, SheetFrame f, Document doc)
+        {
+            if (!(doc is PartDocument p)) return null;
+            Point2d at = P(f.Usable.X0 + f.Usable.W * 0.3, f.Usable.Y0 + f.Usable.H * 0.3);
+            var v = new Views();
+            double w, h;
             if (p.ComponentDefinition is SheetMetalComponentDefinition sm && sm.HasFlatPattern)
             {
-                double len = sm.FlatPattern.Length, wid = sm.FlatPattern.Width;
-                double scale = Scales.Snap(Math.Min(Scales.Fit(Math.Max(len, wid), Math.Min(len, wid), flatR.W, flatR.H),
-                                                    Scales.Fit(len, wid, flatR.W, flatR.H)));
+                w = Math.Max(sm.FlatPattern.Length, sm.FlatPattern.Width); h = Math.Min(sm.FlatPattern.Length, sm.FlatPattern.Width);
                 NameValueMap options = _app.TransientObjects.CreateNameValueMap();
                 options.Add("SheetMetalFoldedModel", false);
-                flat = sheet.DrawingViews.AddBaseView((_Document)doc, P(flatR.CX, flatR.CY), scale,
-                    ViewOrientationTypeEnum.kDefaultViewOrientation, Lines, "", Type.Missing, options);
+                v.Base = sheet.DrawingViews.AddBaseView((_Document)doc, at, Guess(f, w, w), ViewOrientationTypeEnum.kDefaultViewOrientation,
+                    Lines, "", Type.Missing, options);
             }
             else
             {
-                // a solid plate (or sheet metal that cannot be unfolded): look straight at it along its thinnest side
                 Box box = p.ComponentDefinition.RangeBox;
                 ModelAxis thin = KindDetector.ShortestAxis(box, out _, out _);
                 double ex = box.MaxPoint.X - box.MinPoint.X, ey = box.MaxPoint.Y - box.MinPoint.Y, ez = box.MaxPoint.Z - box.MinPoint.Z;
                 ViewOrientationTypeEnum o = thin == ModelAxis.Z ? ViewOrientationTypeEnum.kFrontViewOrientation
                     : thin == ModelAxis.Y ? ViewOrientationTypeEnum.kTopViewOrientation : ViewOrientationTypeEnum.kRightViewOrientation;
-                (double w, double h) = thin == ModelAxis.Z ? (ex, ey) : thin == ModelAxis.Y ? (ex, ez) : (ez, ey);
-                double scale = Scales.Snap(Scales.Fit(w, h, flatR.W, flatR.H));
-                flat = sheet.DrawingViews.AddBaseView((_Document)doc, P(flatR.CX, flatR.CY), scale, o, Lines, "", Type.Missing, Type.Missing);
+                (w, h) = thin == ModelAxis.Z ? (ex, ey) : thin == ModelAxis.Y ? (ex, ez) : (ez, ey);
+                v.Base = sheet.DrawingViews.AddBaseView((_Document)doc, at, Guess(f, w, h), o, Lines, "", Type.Missing, Type.Missing);
             }
-            Tidy(flat);
-
-            DrawingView edge = null;
+            Tidy(v.Base);
             try
             {
-                edge = sheet.DrawingViews.AddProjectedView(flat, P(edgeR.CX, flatR.CY), DrawingViewStyleEnum.kFromBaseDrawingViewStyle, Type.Missing);
-                Tidy(edge);
+                v.Side = sheet.DrawingViews.AddProjectedView(v.Base, P(at.X + w * v.Base.Scale + 5, at.Y), DrawingViewStyleEnum.kFromBaseDrawingViewStyle, Type.Missing);
+                Tidy(v.Side);
             }
-            catch (Exception ex) { Log.Write("Edge view of the flat pattern failed: " + ex.Message); }
-
-            for (int i = 0; i < 6 && Over(flat, flatR) > 1; i++)
-            {
-                double next = Math.Min(Scales.Below(flat.Scale), Scales.Snap(flat.Scale / Over(flat, flatR)));
-                if (next >= flat.Scale) break;
-                flat.Scale = next;
-            }
-            try { flat.Center = P(flatR.CX, flatR.CY); } catch { }
-            if (edge != null)
-            {
-                double x = Math.Max(edgeR.CX, flat.Center.X + flat.Width / 2 + 2.5);
-                try { edge.Center = P(x, flat.Center.Y); } catch { }
-            }
-            return (flat, edge);
+            catch (Exception ex) { Log.Write("Edge view failed: " + ex.Message); }
+            return v;
         }
     }
 }

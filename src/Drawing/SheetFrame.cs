@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Inventor;
 
 namespace AutoDraw.Drawing
@@ -49,6 +50,12 @@ namespace AutoDraw.Drawing
             // the bottom-right 38 % × 21 % of the sheet, as on the J. Blom Opmeer A2 sheets.
             double right = x1 + Math.Max(1.5, 0.03 * W), bottom = y0 - 0.8;
             TitleBlock = new Region(W * 0.62, bottom, right, H * 0.21);
+            Obstacles = new List<Region>
+            {
+                TitleBlock,
+                new Region(W * 0.62, bottom, W * 0.655, H * 0.27),     // the Opmerking / Datum / Check / Rev column left of it
+                new Region(W * 0.42, bottom, W * 0.62, H * 0.065)      // "Ordernummer: …" at the bottom
+            };
             try
             {
                 Box2d tb = sheet.TitleBlock?.RangeBox;
@@ -56,11 +63,17 @@ namespace AutoDraw.Drawing
                 {
                     double w = tb.MaxPoint.X - tb.MinPoint.X, h = tb.MaxPoint.Y - tb.MinPoint.Y;
                     if (w > 1 && h > 1 && w < 0.6 * W && h < 0.35 * H)
+                    {
                         TitleBlock = new Region(tb.MinPoint.X, tb.MinPoint.Y, tb.MaxPoint.X, tb.MaxPoint.Y);
+                        Obstacles = new List<Region> { TitleBlock };
+                    }
                 }
             }
             catch { }
         }
+
+        /// <summary>Areas no view may overlap: the title block and the texts next to it.</summary>
+        public List<Region> Obstacles;
 
         /// <summary>
         /// A region from fractions of the usable area; raised above the title block when it would overlap it.

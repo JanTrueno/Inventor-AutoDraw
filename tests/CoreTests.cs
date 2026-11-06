@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using AutoDraw.Core;
+using AutoDraw.Drawing;
 
 // Checks the logic that does not need Inventor: sheet order and numbers, file names, order numbers, scales.
 internal static class CoreTests
@@ -76,6 +77,22 @@ internal static class CoreTests
         Check("snap tiny -> 1:200", Math.Abs(Scales.Snap(0.0001) - 1 / 200.0) < 1e-12);
         Check("below 1:5 is 1:6", Math.Abs(Scales.Below(0.2) - 1 / 6.0) < 1e-9);
         Check("fit", Math.Abs(Scales.Fit(100, 50, 50, 50, 1) - 0.5) < 1e-9);
+
+        // layout: the mixing tank on an A2 sheet (usable area and title block as on the company sheet)
+        var usable = new Region(1.8, 1.8, 55.6, 34.7);
+        var obstacles = new List<Region> { new Region(36.8, 0.2, 58.4, 8.8), new Region(36.8, 0.2, 38.9, 11.3), new Region(24.9, 0.2, 36.8, 2.7) };
+        var ortho = new ViewGroup { BW = 148, BH = 51.6, BelowH = 51.6, SideW = 51.6 };
+        var iso = new ViewGroup { BW = 141, BH = 102, Prefer = Corner.TopRight, Flexible = true, MarginL = 0.5, MarginR = 0.5, MarginT = 0.5, MarginB = 0.5 };
+        bool packed = Layout.Pack(new List<ViewGroup> { ortho, iso }, usable, obstacles);
+        Check("tank packs", packed);
+        Check("tank ortho scale at least 1:8", ortho.Scale >= 1 / 8.0 - 1e-9, "1:" + (1 / ortho.Scale).ToString("0.#"));
+        Check("groups do not overlap", !ortho.Box.Overlaps(iso.Box));
+        Check("nothing on the title block", obstacles.All(o => !o.Overlaps(ortho.Box) && !o.Overlaps(iso.Box)));
+        Check("inside the sheet", ortho.Box.X0 >= usable.X0 && ortho.Box.Y0 >= usable.Y0 && iso.Box.X1 <= usable.X1 + 1e-6 && iso.Box.Y1 <= usable.Y1 + 1e-6);
+
+        var plate = new ViewGroup { BW = 68, BH = 8, SideW = 1.5, MarginT = 3.2, MarginL = 3.2, MarginB = 2.5, Gap = 4 };
+        Layout.Pack(new List<ViewGroup> { plate }, usable, obstacles);
+        Check("plate 680x80 gets 1:2 or larger", plate.Scale >= 0.5 - 1e-9, "1:" + (1 / plate.Scale).ToString("0.#"));
 
         Console.WriteLine(_failed == 0 ? "All passed." : _failed + " failed.");
         return _failed == 0 ? 0 : 1;
