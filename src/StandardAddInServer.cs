@@ -7,8 +7,8 @@ using Inventor;
 namespace AutoDraw
 {
     /// <summary>
-    /// Inventor add-in entry point: one "AutoDraw" button on the Assemble tab of the assembly ribbon. It opens the
-    /// AutoDraw window for the open assembly.
+    /// Inventor add-in entry point: one "AutoDraw" button on the Assemble tab of the assembly ribbon and on the Place
+    /// Views tab of the drawing ribbon. It opens the AutoDraw window for the open assembly, or for the open drawing.
     /// </summary>
     [ComVisible(true)]
     [Guid(ClientId)]
@@ -36,8 +36,8 @@ namespace AutoDraw
 
             _button = _app.CommandManager.ControlDefinitions.AddButtonDefinition(
                 "AutoDraw", "AutoDraw.Start", CommandTypesEnum.kQueryOnlyCmdType, clientGuid,
-                "Generate the production drawing of this assembly",
-                "AutoDraw\nOpens a window with the parts and sub-assemblies of this assembly and makes one drawing with a sheet for each of them: views, parts lists, balloons and dimensions, saved next to the assembly.",
+                "Generate the production drawing of this assembly, or update a drawing made by AutoDraw",
+                "AutoDraw\nOpens a window with the parts and sub-assemblies of this assembly and makes one drawing with a sheet for each of them: views, parts lists, balloons and dimensions, saved next to the assembly. Started from such a drawing, it adds, redoes, deletes and re-sorts its sheets.",
                 small, large, ButtonDisplayEnum.kDisplayTextInLearningMode);
             _button.OnExecute += OnExecute;
 
@@ -65,15 +65,21 @@ namespace AutoDraw
 
         private void AddToRibbon()
         {
+            AddTo("Assembly", "id_TabAssemble");     // make the drawing
+            AddTo("Drawing", "id_TabPlaceViews");    // update a drawing made by AutoDraw
+        }
+
+        private void AddTo(string ribbon, string tabId)
+        {
             try
             {
-                RibbonTab tab = _app.UserInterfaceManager.Ribbons["Assembly"].RibbonTabs["id_TabAssemble"];
+                RibbonTab tab = _app.UserInterfaceManager.Ribbons[ribbon].RibbonTabs[tabId];
                 RibbonPanel panel;
                 try { panel = tab.RibbonPanels[PanelName]; }
                 catch { panel = tab.RibbonPanels.Add("AutoDraw", PanelName, "{" + ClientId + "}", "", false); }
                 try { panel.CommandControls.AddButton(_button, true, true, "", false); } catch { /* already added */ }
             }
-            catch (Exception ex) { Core.Log.Write("Adding the ribbon button failed: " + ex.Message); }
+            catch (Exception ex) { Core.Log.Write("Adding the ribbon button to " + ribbon + " failed: " + ex.Message); }
         }
 
         private void OnExecute(NameValueMap context)

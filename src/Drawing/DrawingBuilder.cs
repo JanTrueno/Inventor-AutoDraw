@@ -110,6 +110,183 @@ namespace AutoDraw.Drawing
             }
         }
 
+        // ----- updating an existing drawing --------------------------------------------------------------------------
+
+        /// <summary>
+        /// Brings an existing AutoDraw drawing in line with the tree: writes the iProperties again, makes sheets for
+        /// ticked documents that have none (or a different number of sheets, or Redo ticked), deletes the redone sheets
+        /// and, when <paramref name="deleteOthers"/>, the sheets of documents that are unticked or no longer in the
+        /// assembly; then puts all sheets in sheet-plan order (other sheets at the end), names them and saves.
+        /// </summary>
+        public void Update(DrawingDocument drawing, AssemblyDocument main, List<SheetJob> jobs, IEnumerable<DocNode> all, string order,
+            bool deleteOthers, Action<string> progress, Func<bool> cancelled)
+        {
+            if (jobs.Count == 0) throw new InvalidOperationException("Tick at least one document.");
+            try { ((Document)drawing).Activate(); } catch { }
+            progress("Writing iProperties…");
+            WriteProperties(main, jobs, all, order);
+            if (cancelled()) return;
+
+            bool? background = null;
+            try { background = _app.DrawingOptions.EnableBackgroundUpdates; _app.DrawingOptions.EnableBackgroundUpdates = false; }
+            catch (Exception ex) { Log.Write("Switching off background updates failed: " + ex.Message); }
+            DrawingDocument template = null;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(_settings.DrawingOrderProperty))
+                {
+                    try { Props.Set((Document)drawing, _settings.DrawingOrderProperty.Trim(), order.Trim()); }
+                    catch (Exception ex) { Warnings.Add("Drawing iProperty " + _settings.DrawingOrderProperty + ": " + ex.Message); }
+                }
+
+                List<SheetOwner> owners = SheetMap.Read(drawing);
+                var byKey = new Dictionary<string, List<Sheet>>(StringComparer.OrdinalIgnoreCase);
+                foreach (SheetOwner o in owners.Where(o => o.Key != null))
+                {
+                    if (!byKey.TryGetValue(o.Key, out List<Sheet> l)) byKey[o.Key] = l = new List<Sheet>();
+                    l.Add(o.Sheet);
+                }
+
+                var sheetOf = new Dictionary<SheetJob, Sheet>();
+                var toBuild = new List<SheetJob>();
+                var toDelete = new List<Sheet>();
+                foreach (IGrouping<DocNode, SheetJob> g in jobs.GroupBy(j => j.Node))
+                {
+                    List<SheetJob> js = g.OrderBy(j => j.Part).ToList();
+                    byKey.TryGetValue(g.Key.Key, out List<Sheet> existing);
+                    existing = existing ?? new List<Sheet>();
+                    if (!g.Key.Redo && existing.Count == js.Count)
+                        for (int i = 0; i < js.Count; i++) sheetOf[js[i]] = existing[i];
+                    else
+                    {
+                        toDelete.AddRange(existing);
+                        toBuild.AddRange(js);
+                    }
+                }
+                var planned = new HashSet<string>(jobs.Select(j => j.Node.Key), StringComparer.OrdinalIgnoreCase);
+                List<SheetOwner> others = owners.Where(o => o.Key == null || !planned.Contains(o.Key)).ToList();
+                if (deleteOthers) toDelete.AddRange(others.Where(o => o.Key != null).Select(o => o.Sheet));
+                var deleted = new HashSet<Sheet>(toDelete);
+
+                // new sheets first: a drawing must keep at least one sheet
+                toBuild = toBuild.OrderBy(j => j.SheetNo).ToList();
+                foreach (SheetJob job in toBuild)
+                {
+                    if (cancelled()) return;
+                    progress("New sheet for " + job.Node.Name + "…");
+                    sheetOf[job] = NewSheet(drawing, ref template);
+                }
+                foreach (Sheet s in toDelete)
+                {
+                    try { s.Delete(false); }
+                    catch (Exception ex) { Warnings.Add("Could not delete a sheet: " + ex.Message); deleted.Remove(s); }
+                }
+
+                for (int i = 0; i < toBuild.Count; i++)
+                {
+                    if (cancelled()) return;
+                    SheetJob job = toBuild[i];
+                    Sheet sheet = sheetOf[job];
+                    progress("Sheet " + job.SheetNo + ": " + job.Node.Name);
+                    try { OnSheet?.Invoke(i, toBuild.Count, job.Node.Name + "  (" + DocKinds.Label(job.Node.Kind) + (job.Parts > 1 ? ", sheet " + (job.Part + 1) + " of " + job.Parts : "") + ")"); } catch { }
+                    try { sheet.Activate(); } catch { }
+                    try { Build(sheet, job); }
+                    catch (Exception ex)
+                    {
+                        Log.Write("Sheet " + job.SheetNo + " (" + job.Node.Name + ") failed: " + ex);
+                        job.Node.Status = "Sheet " + job.SheetNo + ": " + ex.Message;
+                        job.Node.StatusBad = true;
+                        Warnings.Add(job.Node.Name + ": " + ex.Message);
+                    }
+                }
+                try { OnSheet?.Invoke(toBuild.Count, Math.Max(1, toBuild.Count), ""); } catch { }
+
+                progress("Sorting the sheets…");
+                List<Sheet> desired = jobs.Select(j => sheetOf[j])
+                    .Concat(others.Select(o => o.Sheet).Where(s => !deleted.Contains(s))).ToList();
+                Reorder(drawing, desired);
+                foreach (SheetJob job in jobs)
+                {
+                    try { sheetOf[job].Name = job.Node.Name; } catch { }
+                    if (job.Part == 0 && !job.Node.StatusBad) job.Node.Status = "Sheet " + job.SheetNo;
+                    job.Node.Redo = false;
+                }
+                try { drawing.Sheets[1].Activate(); } catch { }
+
+                progress("Saving…");
+                bool silent = _app.SilentOperation;
+                _app.SilentOperation = true;
+                try { ((Document)drawing).Save(); }
+                catch (Exception ex) { Warnings.Add("Saving the drawing failed: " + ex.Message); }
+                finally { _app.SilentOperation = silent; }
+                RunRules((Document)drawing, progress);
+            }
+            finally
+            {
+                if (template != null) { try { ((Document)template).Close(true); } catch { } }
+                if (background != null) { try { _app.DrawingOptions.EnableBackgroundUpdates = background.Value; } catch { } }
+            }
+        }
+
+        /// <summary>
+        /// An empty sheet with the drawing's border and title block, copied from the template's first sheet (opened
+        /// once, invisibly) or, without a template, from the drawing's own first sheet.
+        /// </summary>
+        private Sheet NewSheet(DrawingDocument drawing, ref DrawingDocument template)
+        {
+            if (template == null && System.IO.File.Exists(_settings.TemplatePath ?? ""))
+            {
+                try { template = (DrawingDocument)_app.Documents.Open(_settings.TemplatePath, false); }
+                catch (Exception ex) { Log.Write("Opening the template failed: " + ex.Message); }
+            }
+            Sheet source = template != null ? template.Sheets[1] : drawing.Sheets[1];
+            TitleBlockDefinition tbDef = null;
+            BorderDefinition borderDef = null;
+            try { tbDef = drawing.Sheets[1].TitleBlock?.Definition; } catch { }
+            try { borderDef = drawing.Sheets[1].Border?.Definition; } catch { }
+
+            Sheet copy = source.CopyTo((_DrawingDocument)drawing);
+            try { for (int i = copy.PartsLists.Count; i >= 1; i--) copy.PartsLists[i].Delete(); } catch { }
+            for (int i = copy.DrawingViews.Count; i >= 1; i--)
+            {
+                try { copy.DrawingViews[i].Delete(); } catch { }
+            }
+            try { if (borderDef != null && copy.Border == null) copy.AddBorder(borderDef, Type.Missing); }
+            catch (Exception ex) { Log.Write("Adding the border failed: " + ex.Message); }
+            try { if (tbDef != null && copy.TitleBlock == null) copy.AddTitleBlock(tbDef, Type.Missing, Type.Missing); }
+            catch (Exception ex) { Log.Write("Adding the title block failed: " + ex.Message); }
+            return copy;
+        }
+
+        /// <summary>Puts the sheets in the given order by moving their nodes in the drawing's browser.</summary>
+        private void Reorder(DrawingDocument drawing, List<Sheet> desired)
+        {
+            string NameOf(Sheet s) { try { return s.Name; } catch { return ""; } }
+            BrowserPane pane = null;
+            foreach (BrowserPane p in ((Document)drawing).BrowserPanes)
+            {
+                try { if (p.GetBrowserNodeFromObject(drawing.Sheets[1]) != null) { pane = p; break; } } catch { }
+            }
+            if (pane == null) { Warnings.Add("Could not sort the sheets (no browser)."); return; }
+            try
+            {
+                for (int i = 0; i < desired.Count && i < drawing.Sheets.Count; i++)
+                {
+                    Sheet at = drawing.Sheets[i + 1];
+                    if (NameOf(at) == NameOf(desired[i])) continue;
+                    pane.Reorder(pane.GetBrowserNodeFromObject(at), true, pane.GetBrowserNodeFromObject(desired[i]), Type.Missing);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Sorting the sheets failed: " + ex);
+                Warnings.Add("Could not sort the sheets: " + ex.Message);
+                return;
+            }
+            for (int i = 0; i < desired.Count && i < drawing.Sheets.Count; i++)
+                if (NameOf(drawing.Sheets[i + 1]) != NameOf(desired[i])) { Warnings.Add("The sheets are not fully in order."); break; }
+        }
+
         // ----- iLogic -----------------------------------------------------------------------------------------------
 
         private const string ILogicId = "{3BDD8D79-2179-4B11-8A5A-257B1C0263AC}";

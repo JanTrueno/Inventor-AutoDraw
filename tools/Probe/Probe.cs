@@ -27,7 +27,47 @@ internal static class Probe
         if (args[0] == "idw") return Idw(app, args[1], args.Length > 2 ? int.Parse(args[2]) : 99);
         if (args[0] == "part") return Part(app, args[1]);
         if (args[0] == "dims") return Dims(app, args[1], args[2]);
+        if (args[0] == "sheets") return Sheets(app, args[1]);
         return 1;
+    }
+
+    // which document each sheet shows (first base view), and a test move of the last sheet to the front in the
+    // browser; the drawing is closed without saving
+    private static int Sheets(Inventor.Application app, string path)
+    {
+        var d = (DrawingDocument)app.Documents.Open(path, false);
+        try
+        {
+            foreach (Sheet s in d.Sheets)
+            {
+                string owner = "-";
+                foreach (DrawingView v in s.DrawingViews)
+                {
+                    Document m = null;
+                    try { m = (Document)v.ReferencedDocumentDescriptor.ReferencedDocument; } catch { }
+                    if (m == null) continue;
+                    bool baseView = true;
+                    try { baseView = v.ParentView == null; } catch { }
+                    if (baseView) { owner = (m is AssemblyDocument ? "ASM " : "") + System.IO.Path.GetFileName(m.FullFileName); break; }
+                }
+                Console.WriteLine(s.Name + "  ->  " + owner);
+            }
+            BrowserPane pane = null;
+            foreach (BrowserPane p in ((Document)d).BrowserPanes)
+            {
+                try { if (p.GetBrowserNodeFromObject(d.Sheets[1]) != null) { pane = p; break; } } catch { }
+            }
+            Console.WriteLine("pane: " + (pane == null ? "none" : pane.Name));
+            if (pane != null)
+            {
+                Sheet last = d.Sheets[d.Sheets.Count];
+                string name = last.Name;
+                pane.Reorder(pane.GetBrowserNodeFromObject(d.Sheets[1]), true, pane.GetBrowserNodeFromObject(last), Type.Missing);
+                Console.WriteLine("moved " + name + "; now first: " + d.Sheets[1].Name + ", second: " + d.Sheets[2].Name);
+            }
+        }
+        finally { ((Document)d).Close(true); }
+        return 0;
     }
 
     private static string B(Box b) => string.Format("({0:0.0},{1:0.0},{2:0.0})-({3:0.0},{4:0.0},{5:0.0})", b.MinPoint.X, b.MinPoint.Y, b.MinPoint.Z, b.MaxPoint.X, b.MaxPoint.Y, b.MaxPoint.Z);

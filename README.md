@@ -13,6 +13,18 @@ part type, parts lists with balloons, overall dimensions and, on flat patterns, 
 5. **Generate drawing**. The drawing is saved next to the assembly as `<ordernummer>_<assembly>_<y-M-d>.idw`
    (`_2`, `_3` … when that name is taken) and opened.
 
+## Updating a drawing
+
+Open a drawing made by AutoDraw and click **AutoDraw** on the **Place Views** tab. The window opens for the drawing's
+assembly (the one shown on its first sheet); documents with a sheet in the drawing are ticked, the others are not.
+
+- **Tick** a document without a sheet to add one; **untick** one to delete its sheet.
+- **Redo** makes a document's sheets again (views, dimensions), e.g. after a change of the model or its type.
+- **Numbering…** works as from the assembly; the new numbers sort the sheets on the next update.
+- **Update drawing** writes the iProperties again, makes the new and redone sheets, asks before deleting sheets of
+  unticked documents and of documents no longer in the assembly (No keeps them at the end), puts all sheets in order
+  (type, then part number), renames them, runs the iLogic rules and saves the drawing.
+
 ## What it writes
 
 - `Aantal` – total quantity of the document in the main assembly (or the value typed in the tree).

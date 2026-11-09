@@ -17,7 +17,7 @@ namespace AutoDraw.UI
     {
         private const int Step = 16;
         public const string ColName = "name", ColKind = "kind", ColQty = "qty", ColSheets = "sheets", ColSheetNo = "sheetno",
-            ColMaterial = "material", ColStatus = "status", ExtraPrefix = "prop:";
+            ColMaterial = "material", ColStatus = "status", ColRedo = "redo", ExtraPrefix = "prop:";
 
         private readonly Theme _theme;
         private readonly Dictionary<(DocNode, string), string> _propCache = new Dictionary<(DocNode, string), string>();
@@ -31,6 +31,9 @@ namespace AutoDraw.UI
         public event Action<DocNode> NodeSelected;
 
         public Func<int> LargeLimit = () => 15;
+
+        /// <summary>Opened from a drawing: shows the Redo column (make the sheet again).</summary>
+        public bool DrawingMode;
 
         public TreeGrid(Theme theme)
         {
@@ -81,6 +84,8 @@ namespace AutoDraw.UI
             Columns.Add(new DataGridViewTextBoxColumn { Name = ColQty, HeaderText = "Aantal", Width = 60 });
             Columns.Add(new DataGridViewTextBoxColumn { Name = ColSheets, HeaderText = "Sheets", Width = 55 });
             Columns.Add(new DataGridViewTextBoxColumn { Name = ColSheetNo, HeaderText = "Sheet no.", Width = 70, ReadOnly = true });
+            if (DrawingMode)
+                Columns.Add(new DataGridViewCheckBoxColumn { Name = ColRedo, HeaderText = "Redo", Width = 46, ReadOnly = true, FlatStyle = FlatStyle.Flat });
             Columns.Add(new DataGridViewTextBoxColumn { Name = ColMaterial, HeaderText = "Material", Width = 130, ReadOnly = true });
             foreach (string p in _extra)
                 Columns.Add(new DataGridViewTextBoxColumn { Name = ExtraPrefix + p, HeaderText = p, Width = 110 });
@@ -156,6 +161,7 @@ namespace AutoDraw.UI
                 r.Cells[ColQty].Value = n.QuantityValue;
                 r.Cells[ColSheets].Value = n.IsAssembly ? n.SheetCount(LargeLimit()).ToString() : "";
                 r.Cells[ColSheetNo].Value = n.SheetNo > 0 ? Naming.SheetText(n.SheetNo) : "";
+                if (DrawingMode) r.Cells[ColRedo].Value = n.Redo;
                 r.Cells[ColMaterial].Value = n.Material;
                 foreach (string p in _extra) r.Cells[ExtraPrefix + p].Value = PropValue(n, p);
                 r.Cells[ColStatus].Value = n.Status;
@@ -199,6 +205,11 @@ namespace AutoDraw.UI
             base.OnCellClick(e);
             if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
             DataGridViewCell cell = Rows[e.RowIndex].Cells[e.ColumnIndex];
+            if (Columns[e.ColumnIndex].Name == ColRedo)
+            {
+                if (Rows[e.RowIndex].Tag is DocNode rn && !rn.IsGroup) { rn.Redo = !rn.Redo; Fill(Rows[e.RowIndex]); }
+                return;
+            }
             if (cell.ReadOnly || e.ColumnIndex == Columns[ColName].Index) return;
             BeginEdit(true);
             if (EditingControl is ComboBox combo) combo.DroppedDown = true;

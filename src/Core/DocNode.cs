@@ -86,6 +86,10 @@ namespace AutoDraw.Core
         public readonly Dictionary<string, string> Edited = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         public int SheetNo;              // first sheet of this document in the drawing, 0 = no sheet
+        /// <summary>Opened from a drawing: the sheets this document has there now.</summary>
+        public int SheetsInDrawing;
+        /// <summary>Opened from a drawing: make this document's sheets again on Update.</summary>
+        public bool Redo;
         public string Status = "";
         public bool StatusBad;
 
