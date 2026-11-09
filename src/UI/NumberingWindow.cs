@@ -181,7 +181,8 @@ namespace AutoDraw.UI
             g.DefaultCellStyle.SelectionForeColor = _theme.Text;
             g.Font = new Font("Segoe UI", 9f);
 
-            g.Columns.Add(new DataGridViewCheckBoxColumn { Name = "use", HeaderText = "", Width = 30, FlatStyle = FlatStyle.Flat });
+            // read-only: the tick is toggled here (not by the grid's own editing), so the rows can be rebuilt safely
+            g.Columns.Add(new DataGridViewCheckBoxColumn { Name = "use", HeaderText = "", Width = 30, FlatStyle = FlatStyle.Flat, ReadOnly = true });
             g.Columns.Add(new DataGridViewTextBoxColumn { Name = "name", HeaderText = "Name", Width = 300, ReadOnly = true });
             g.Columns.Add(new DataGridViewTextBoxColumn { Name = "kind", HeaderText = "Type", Width = 130, ReadOnly = true });
             g.Columns.Add(new DataGridViewTextBoxColumn { Name = "current", HeaderText = "Current", Width = 160, ReadOnly = true });
@@ -189,11 +190,16 @@ namespace AutoDraw.UI
             g.Columns.Add(new DataGridViewTextBoxColumn { Name = "note", HeaderText = "", ReadOnly = true, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = 80 });
             foreach (DataGridViewColumn c in g.Columns) c.SortMode = DataGridViewColumnSortMode.NotSortable;
 
-            g.CellContentClick += (s, e) =>
+            g.CellMouseUp += (s, e) =>
             {
-                if (e.RowIndex < 0 || g.Columns[e.ColumnIndex].Name != "use" || !(g.Rows[e.RowIndex].Tag is DocNode n)) return;
-                if (!_excluded.Remove(n)) _excluded.Add(n);
-                Refill();
+                if (e.Button != MouseButtons.Left || e.RowIndex < 0 || e.ColumnIndex < 0 || g.Columns[e.ColumnIndex].Name != "use") return;
+                if (g.Rows[e.RowIndex].Tag is DocNode n) Toggle(n);
+            };
+            g.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode != Keys.Space || !(g.CurrentRow?.Tag is DocNode n)) return;
+                Toggle(n);
+                e.Handled = e.SuppressKeyPress = true;
             };
             g.DataError += (s, e) => e.ThrowException = false;
             return g;
@@ -201,10 +207,18 @@ namespace AutoDraw.UI
 
         // ----- content ----------------------------------------------------------------------------------------------------
 
+        /// <summary>Ticks or unticks a row; the numbers are worked out again after the click has finished.</summary>
+        private void Toggle(DocNode n)
+        {
+            if (!_excluded.Remove(n)) _excluded.Add(n);
+            BeginInvoke((Action)Refill);
+        }
+
         private void Collect(DocNode n)
         {
             if (n.IsGroup || n.IsContentCenter) return;
             _nodes.Add(n);
+            if (!n.Checked && !n.IsMain) _excluded.Add(n);   // unticked in the main tree: unticked here too
             try
             {
                 string file = n.Doc?.FullFileName;
