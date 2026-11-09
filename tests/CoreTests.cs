@@ -187,6 +187,8 @@ internal static class CoreTests
         Check("renumber all", Numbers()["conveyor"] == "1777.200.000-S");
         num = Numbers(n => n.Name != "loose" && n.Name != "frame");
         Check("excluded documents get no row, the rest keep their place", !num.ContainsKey("loose") && !num.ContainsKey("frame") && num["bracket"] == "1777.100.001-Z", string.Join(" ", num.Select(kv => kv.Key + "=" + kv.Value)));
+        Check("own number recognised", PartNumbering.IsOurs("1777.100.007-P", "160261777", ns) && !PartNumbering.IsOurs("0448.100.007-P", "160261777", ns)
+            && !PartNumbering.IsOurs("FG2701RVS", "160261777", ns));
         ns.NumberPattern = "{order}-{asm}-{seq}{type}"; ns.NumberOrderDigits = 0;
         ns.TypeLetters["Lathe"] = "L";
         Check("pattern, all digits and letters configurable", Numbers()["shaft"] == "160261777-200-001L");

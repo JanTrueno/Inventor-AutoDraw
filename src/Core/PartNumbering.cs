@@ -92,6 +92,14 @@ namespace AutoDraw.Core
             return new Regex(sb.ToString(), RegexOptions.IgnoreCase);
         }
 
+        /// <summary>True when <paramref name="value"/> is a number of this pattern and this order.</summary>
+        public static bool IsOurs(string value, string order, AppSettings s)
+        {
+            Match m = Parser(s.NumberPattern).Match((value ?? "").Trim());
+            return m.Success && m.Groups["seq"].Success &&
+                (!m.Groups["order"].Success || m.Groups["order"].Value == OrderPart(order, s.NumberOrderDigits));
+        }
+
         /// <summary>What a pattern is missing, or null when it can be used.</summary>
         public static string PatternProblem(string pattern)
         {

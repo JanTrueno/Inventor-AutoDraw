@@ -34,15 +34,17 @@ namespace AutoDraw.UI
         private readonly HashSet<DocNode> _readOnly = new HashSet<DocNode>();
         private readonly Dictionary<DocNode, string> _current = new Dictionary<DocNode, string>();
         private Dictionary<DocNode, NumberRow> _rows = new Dictionary<DocNode, NumberRow>();
+        /// <summary>Unticked documents that get their file name back as number.</summary>
+        private readonly Dictionary<DocNode, string> _resets = new Dictionary<DocNode, string>();
         private bool _ok;
 
         private readonly FieldBox _pattern, _digits, _props;
         private readonly FieldBox[] _letters = new FieldBox[DocKinds.All.Length];
-        private readonly CheckBox _keep = new CheckBox();
+        private readonly CheckBox _keep = new CheckBox(), _reset = new CheckBox();
         private readonly Label _example = new Label();
         private readonly DataGridView _grid = new DataGridView();
         private readonly Label _status = new Label();
-        private readonly InventorButton _apply, _close, _propsMenu;
+        private readonly InventorButton _apply, _close, _propsMenu, _refresh;
 
         /// <summary>True when numbers were written; the main window then reads the iProperties again.</summary>
         public bool Applied { get; private set; }
@@ -70,6 +72,7 @@ namespace AutoDraw.UI
             _propsMenu = new InventorButton(theme, "…", false) { Size = new Size(30, 22) };
             _apply = new InventorButton(theme, "Apply", true) { Size = new Size(110, 28), Dock = DockStyle.Right };
             _close = new InventorButton(theme, "Close", false) { Size = new Size(90, 28), Dock = DockStyle.Right };
+            _refresh = new InventorButton(theme, "Refresh", false) { Size = new Size(90, 28), Dock = DockStyle.Left };
 
             Controls.Add(BuildGrid());
             Controls.Add(BuildBottom());
@@ -88,7 +91,7 @@ namespace AutoDraw.UI
 
         private Control BuildTop()
         {
-            var top = new Panel { Dock = DockStyle.Top, Height = 172, BackColor = _theme.Back };
+            var top = new Panel { Dock = DockStyle.Top, Height = 196, BackColor = _theme.Back };
             int lx = 12, fx = 140;
 
             top.Controls.Add(Caption("Pattern", lx, 12, 120));
@@ -133,6 +136,14 @@ namespace AutoDraw.UI
             _keep.FlatAppearance.BorderColor = _theme.Dim;
             top.Controls.Add(_keep);
 
+            _reset.Text = "Unticked rows that carry a number of this order get their file name back as number";
+            _reset.Checked = _settings.NumberResetSkipped;
+            _reset.Location = new Point(fx, 158); _reset.Size = new Size(620, 24);
+            _reset.ForeColor = _theme.Text; _reset.BackColor = _theme.Back; _reset.FlatStyle = FlatStyle.Flat;
+            _reset.FlatAppearance.BorderColor = _theme.Dim;
+            top.Controls.Add(_reset);
+            _reset.CheckedChanged += (s, e) => { SaveSettings(); Refill(); };
+
             _pattern.TextChanged += (s, e) => { SaveSettings(); Refill(); };
             _digits.TextChanged += (s, e) => { SaveSettings(); Refill(); };
             _props.TextChanged += (s, e) => { SaveSettings(); _current.Clear(); Refill(); };
@@ -149,6 +160,9 @@ namespace AutoDraw.UI
             bottom.Controls.Add(_apply);
             bottom.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 8, BackColor = _theme.Header });
             bottom.Controls.Add(_close);
+            bottom.Controls.Add(new Panel { Dock = DockStyle.Left, Width = 12, BackColor = _theme.Header });
+            bottom.Controls.Add(_refresh);
+            _refresh.Click += (s, e) => { _current.Clear(); Refill(); };
             _apply.Click += (s, e) => Apply();
             _close.Click += (s, e) => Close();
             return bottom;
@@ -248,6 +262,7 @@ namespace AutoDraw.UI
             _settings.NumberProperties = _props.Text.Split(';').Select(p => p.Trim()).Where(p => p.Length > 0)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             _settings.NumberKeepExisting = _keep.Checked;
+            _settings.NumberResetSkipped = _reset.Checked;
             _settings.TypeLetters = new Dictionary<string, string>();
             for (int i = 0; i < DocKinds.All.Length; i++)
                 if (_letters[i] != null) _settings.TypeLetters[DocKinds.All[i].ToString()] = _letters[i].Text.Trim();
@@ -266,6 +281,12 @@ namespace AutoDraw.UI
             var warnings = new List<string>();
             _rows = problem != null ? new Dictionary<DocNode, NumberRow>()
                 : PartNumbering.Plan(_root, _order, _settings, Current, n => !_excluded.Contains(n), warnings).ToDictionary(r => r.Node);
+            _resets.Clear();
+            if (problem == null && _settings.NumberResetSkipped)
+                foreach (DocNode n in _excluded.Where(x => !_readOnly.Contains(x) && x.Doc != null))
+                    if (PartNumbering.IsOurs(Current(n), _order, _settings)) _resets[n] = n.Name;
+            bool leftovers = problem == null && !_settings.NumberResetSkipped &&
+                _excluded.Any(n => PartNumbering.IsOurs(Current(n), _order, _settings));
             _example.Text = problem == null
                 ? "e.g. " + PartNumbering.Format(_settings.NumberPattern, PartNumbering.OrderPart(_order, _settings.NumberOrderDigits), 110, 2,
                     PartNumbering.Letter(_settings, DocKind.Lathe), "shaft")
@@ -287,12 +308,14 @@ namespace AutoDraw.UI
                 if (n.IsMain) r.Cells["name"].Style.Font = new Font(_grid.Font, FontStyle.Bold);
                 r.Cells["kind"].Value = DocKinds.Label(n.Kind);
                 r.Cells["current"].Value = Current(n);
-                r.Cells["new"].Value = row?.Value ?? "";
-                string note = _readOnly.Contains(n) ? "read-only file" : row == null ? (_excluded.Contains(n) ? "skipped" : "")
+                bool reset = _resets.TryGetValue(n, out string back);
+                r.Cells["new"].Value = row?.Value ?? (reset ? back : "");
+                string note = _readOnly.Contains(n) ? "read-only file" : reset ? "skipped, number removed"
+                    : row == null ? (_excluded.Contains(n) ? "skipped" : "")
                     : !row.Changed ? "unchanged" : row.Kept ? "kept, type changed" : "";
                 r.Cells["note"].Value = note;
                 r.Cells["note"].Style.ForeColor = _theme.Dim;
-                r.Cells["new"].Style.ForeColor = row != null && row.Changed ? _theme.Link : _theme.Dim;
+                r.Cells["new"].Style.ForeColor = (row != null && row.Changed) || reset ? _theme.Link : _theme.Dim;
                 if (row == null) r.DefaultCellStyle.ForeColor = _theme.Dim;
             }
             _grid.ResumeLayout();
@@ -300,10 +323,12 @@ namespace AutoDraw.UI
             DataGridViewRow sel = _grid.Rows.Cast<DataGridViewRow>().FirstOrDefault(x => x.Tag == selected);
             if (sel != null) { try { _grid.CurrentCell = sel.Cells["name"]; } catch { } }
 
-            int changes = _rows.Values.Count(r => r.Changed);
+            int changes = _rows.Values.Count(r => r.Changed) + _resets.Count;
             _ok = problem == null && changes > 0;
             _apply.Enabled = _ok;
             if (problem != null) SetStatus(problem, true);
+            else if (leftovers) SetStatus(changes + " of " + _rows.Count + " numbers change.  Unticked rows still carry a number of this order: " +
+                "tick \"file name back\" to remove them" + (_settings.NumberKeepExisting ? " and untick \"Keep numbers\" to close the gaps." : "."), true);
             else SetStatus(changes + " of " + _rows.Count + " numbers change." +
                 (warnings.Count > 0 ? "  " + string.Join("  ", warnings.Take(2)) + (warnings.Count > 2 ? " …" : "") : ""), warnings.Count > 0);
         }
@@ -342,7 +367,8 @@ namespace AutoDraw.UI
         private void Apply()
         {
             if (!_ok) return;
-            List<NumberRow> todo = _rows.Values.Where(r => r.Changed && r.Node.Doc != null).ToList();
+            List<NumberRow> todo = _rows.Values.Where(r => r.Changed && r.Node.Doc != null)
+                .Concat(_resets.Select(kv => new NumberRow { Node = kv.Key, Value = kv.Value, Current = Current(kv.Key) })).ToList();
             Cursor = Cursors.WaitCursor;
             _apply.Enabled = _close.Enabled = false;
             var changed = new HashSet<Document>();

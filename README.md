@@ -45,7 +45,9 @@ Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
 - A part used in several assemblies is numbered in the first one. Content Center and read-only files are skipped;
   any row can be unticked.
 - **Keep numbers that already fit**: documents that already have a number of this order keep it, so new parts get the
-  free numbers and released numbers do not move.
+  free numbers and released numbers do not move. Untick it to renumber from scratch (closes the gaps of unticked rows).
+- **File name back for unticked rows**: unticked documents that still carry a number of this order get their file name
+  as number again (Inventor's default part number). **Refresh** reads the iProperties from the files again.
 
 ## Settings in the window
 
