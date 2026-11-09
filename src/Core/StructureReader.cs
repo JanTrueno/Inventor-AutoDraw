@@ -120,14 +120,16 @@ namespace AutoDraw.Core
             return n;
         }
 
-        /// <summary>Sub-assemblies first, then folded, flat, lathe, tube, general; alphabetical within each kind.</summary>
+        /// <summary>Sub-assemblies first, then folded, flat, lathe, tube, general; by part number within each kind.</summary>
         public static void SortChildren(DocNode n)
         {
             n.Children.Sort((a, b) =>
             {
                 if (a.IsGroup != b.IsGroup) return a.IsGroup ? 1 : -1;
                 int k = ((int)a.Kind).CompareTo((int)b.Kind);
-                return k != 0 ? k : Naming.NaturalCompare(a.Name, b.Name);
+                if (k != 0) return k;
+                int p = Naming.NaturalCompare(a.SortName, b.SortName);
+                return p != 0 ? p : Naming.NaturalCompare(a.Name, b.Name);
             });
             foreach (DocNode c in n.Children) SortChildren(c);
         }

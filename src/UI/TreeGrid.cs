@@ -237,6 +237,7 @@ namespace AutoDraw.UI
                 string current;
                 _propCache.TryGetValue((n, prop), out current);
                 if (text == (current ?? "")) n.Edited.Remove(prop); else n.Edited[prop] = text;
+                BeginInvoke((Action)(() => PlanChanged?.Invoke()));   // a new part number can move the sheet
             }
         }
 

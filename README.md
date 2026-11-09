@@ -63,7 +63,8 @@ Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
 ## Sheets
 
 Order: main assembly → sub-assemblies → sheet metal folded → sheet metal flat → lathe parts → tubes → general,
-alphabetical within each type. Content Center parts are in a closed, unticked group at the bottom.
+by part number within each type (the file name when it has none). Content Center parts are in a closed, unticked
+group at the bottom.
 
 | Type | Sheet |
 |---|---|

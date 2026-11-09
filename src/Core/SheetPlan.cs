@@ -14,7 +14,7 @@ namespace AutoDraw.Core
 
     /// <summary>
     /// The sheet order: main assembly, sub-assemblies, folded sheet metal, flat sheet metal, lathe parts, tubes, general
-    /// parts; alphabetical (numbers by value) within each kind. Only ticked documents get sheets.
+    /// parts; by part number (else name, numbers by value) within each kind. Only ticked documents get sheets.
     /// </summary>
     internal static class SheetPlan
     {
@@ -24,6 +24,7 @@ namespace AutoDraw.Core
             var ordered = ticked
                 .OrderBy(n => n.IsMain ? 0 : 1)
                 .ThenBy(n => (int)n.Kind)
+                .ThenBy(n => n.SortName, Naming.Natural)
                 .ThenBy(n => n.Name, Naming.Natural)
                 .ToList();
 

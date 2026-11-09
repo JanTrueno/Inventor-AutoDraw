@@ -232,6 +232,7 @@ namespace AutoDraw.UI
                 _title.Text = _reader.Root.Name;
                 Text = "AutoDraw – " + _reader.Root.Name;
                 _order.Text = Props.Get((Document)asm, _settings.OrderProperty);
+                ReadPartNumbers();
                 SheetPlan.Number(_all, _settings.LargeAssemblyRows);
                 _grid.SetRoot(_reader.Root);
                 int parts = _all.Count(n => !n.IsAssembly), asms = _all.Count(n => n.IsAssembly);
@@ -252,8 +253,33 @@ namespace AutoDraw.UI
             return problem ?? "";
         }
 
+        private readonly Dictionary<DocNode, string> _filePartNumbers = new Dictionary<DocNode, string>();
+
+        private string PartNumberProperty => _settings.NumberProperties.FirstOrDefault() ?? "Part Number";
+
+        /// <summary>Reads every document's part number (it orders sheets and rows within a kind) and sorts the tree again.</summary>
+        private void ReadPartNumbers()
+        {
+            string prop = PartNumberProperty;
+            _filePartNumbers.Clear();
+            foreach (DocNode n in _all.Where(n => n.Doc != null))
+            {
+                _filePartNumbers[n] = Props.Get(n.Doc, prop);
+                n.PartNumber = n.Edited.TryGetValue(prop, out string v) ? v : _filePartNumbers[n];
+            }
+            StructureReader.SortChildren(_reader.Root);
+        }
+
         private void Renumber()
         {
+            string prop = PartNumberProperty;
+            bool moved = false;
+            foreach (DocNode n in _all)
+            {
+                string v = n.Edited.TryGetValue(prop, out string e) ? e : _filePartNumbers.TryGetValue(n, out string f) ? f : n.PartNumber;
+                if (v != n.PartNumber) { n.PartNumber = v; moved = true; }
+            }
+            if (moved) { StructureReader.SortChildren(_reader.Root); _grid.Rebuild(); }
             SheetPlan.Number(_all, _settings.LargeAssemblyRows);
             _grid.RefreshValues();
             int sheets = SheetPlan.Make(_all, _settings.LargeAssemblyRows).Count;
@@ -336,6 +362,9 @@ namespace AutoDraw.UI
                 w.ShowDialog(this);
                 if (!w.Applied) return;
             }
+            ReadPartNumbers();
+            _grid.Rebuild();
+            Renumber();
             _grid.ForgetValues();
             if (_settings.NumberProperties.Count > 0 && !_settings.ExtraColumns.Contains(_settings.NumberProperties[0], StringComparer.OrdinalIgnoreCase))
                 SetStatus("Part numbers written to " + string.Join(", ", _settings.NumberProperties) + ".", false);

@@ -54,6 +54,15 @@ internal static class CoreTests
         nodes.First(n => n.Name == "misc").KindOverride = DocKind.SheetMetalFolded;
         jobs = SheetPlan.Number(nodes, 15);
         Check("kind override moves the sheet", jobs.FindIndex(j => j.Node.Name == "misc") < jobs.FindIndex(j => j.Node.Name == "plate_P2"));
+        nodes.First(n => n.Name == "bracket_Z10").PartNumber = "1777.100.001-Z";
+        nodes.First(n => n.Name == "bracket_Z2").PartNumber = "1777.100.002-Z";
+        nodes.First(n => n.Name == "misc").PartNumber = "1777.000.001-G";
+        nodes.First(n => n.Name == "frame_S3").PartNumber = "1777.100.000-S";
+        nodes.First(n => n.Name == "frame_S2").PartNumber = "1777.200.000-S";
+        jobs = SheetPlan.Make(nodes, 15);
+        order = string.Join(",", jobs.Where(j => j.Part == 0).Select(j => j.Node.Name));
+        Check("by part number within each kind, kinds first", order == "lekbak_S1,frame_S3,frame_S2,misc,bracket_Z10,bracket_Z2,plate_P2,shaft_I1,tube_K1", order);
+        foreach (DocNode n in nodes) n.PartNumber = "";
 
         Check("sheet text", Naming.SheetText(7) == "007" && Naming.SheetText(123) == "123");
 

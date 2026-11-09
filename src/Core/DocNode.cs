@@ -79,6 +79,9 @@ namespace AutoDraw.Core
         public int Level => Parent == null ? 0 : Parent.Level + 1;
 
         public string Material = "";
+        /// <summary>The part number (the first numbering iProperty); sheets and tree rows sort by it within each kind.</summary>
+        public string PartNumber = "";
+        public string SortName => string.IsNullOrWhiteSpace(PartNumber) ? Name : PartNumber;
         /// <summary>iProperty values typed in the extra columns; written when the drawing is generated.</summary>
         public readonly Dictionary<string, string> Edited = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
