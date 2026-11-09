@@ -56,13 +56,19 @@ namespace AutoDraw.Core
             return digits > 0 && d.Length > digits ? d.Substring(d.Length - digits) : d;
         }
 
-        public static string Format(string pattern, string order, int asm, int seq, string type, string name) =>
+        /// <summary>Assembly levels below the main assembly that get a code of their own; the code has as many digits.</summary>
+        public static int Levels(AppSettings s) => Math.Max(1, Math.Min(6, s.NumberLevels));
+
+        /// <summary>The assembly code as text: <paramref name="levels"/> digits, 1100 for the first sub-sub-assembly with 4 levels.</summary>
+        public static string Code(int asm, int levels) => asm.ToString(new string('0', levels));
+
+        public static string Format(string pattern, string order, int asm, int seq, string type, string name, int levels = 3) =>
             TokenRx.Replace(pattern ?? "", m =>
             {
                 switch (m.Groups[1].Value.ToLowerInvariant())
                 {
                     case "order": return order ?? "";
-                    case "asm": return asm.ToString("000");
+                    case "asm": return Code(asm, levels);
                     case "seq": return seq.ToString("000");
                     case "type": return type ?? "";
                     default: return name ?? "";
@@ -70,7 +76,7 @@ namespace AutoDraw.Core
             });
 
         /// <summary>A regular expression that reads a number made with <paramref name="pattern"/> back.</summary>
-        public static Regex Parser(string pattern)
+        public static Regex Parser(string pattern, int levels = 3)
         {
             pattern = pattern ?? "";
             var sb = new StringBuilder("^");
@@ -81,7 +87,7 @@ namespace AutoDraw.Core
                 switch (m.Groups[1].Value.ToLowerInvariant())
                 {
                     case "order": sb.Append(@"(?<order>\d+)"); break;
-                    case "asm": sb.Append(@"(?<asm>\d{3})"); break;
+                    case "asm": sb.Append(@"(?<asm>\d{" + levels + "})"); break;
                     case "seq": sb.Append(@"(?<seq>\d{3,})"); break;
                     case "type": sb.Append(@"(?<type>[A-Za-z0-9]*)"); break;
                     default: sb.Append(@".*?"); break;
@@ -95,7 +101,7 @@ namespace AutoDraw.Core
         /// <summary>True when <paramref name="value"/> is a number of this pattern and this order.</summary>
         public static bool IsOurs(string value, string order, AppSettings s)
         {
-            Match m = Parser(s.NumberPattern).Match((value ?? "").Trim());
+            Match m = Parser(s.NumberPattern, Levels(s)).Match((value ?? "").Trim());
             return m.Success && m.Groups["seq"].Success &&
                 (!m.Groups["order"].Success || m.Groups["order"].Value == OrderPart(order, s.NumberOrderDigits));
         }
@@ -115,7 +121,8 @@ namespace AutoDraw.Core
             Func<DocNode, bool> include, List<string> warnings)
         {
             string ord = OrderPart(order, s.NumberOrderDigits);
-            Regex rx = Parser(s.NumberPattern);
+            int levels = Levels(s);
+            Regex rx = Parser(s.NumberPattern, levels);
             include = include ?? (n => true);
 
             // the present number, when it fits the pattern and this order
@@ -152,7 +159,7 @@ namespace AutoDraw.Core
             }
             void Structure(DocNode asm, int code, int depth)
             {
-                int step = depth == 0 ? 100 : depth == 1 ? 10 : depth == 2 ? 1 : 0;
+                int step = depth < levels ? (int)Math.Pow(10, levels - 1 - depth) : 0;
                 var codes = new Dictionary<DocNode, int>();
                 List<DocNode> subs = asm.Children.Where(c => Real(c) && c.IsAssembly).ToList();
                 if (step > 0)
@@ -169,13 +176,13 @@ namespace AutoDraw.Core
                     foreach (DocNode sub in subs.Where(x => !codes.ContainsKey(x)))
                     {
                         while (next <= 9 && taken.Contains(code + next * step)) next++;
-                        if (next > 9) { warnings?.Add(sub.Name + ": more than 9 assemblies in " + asm.Name + "; numbered in " + code.ToString("000")); continue; }
+                        if (next > 9) { warnings?.Add(sub.Name + ": more than 9 assemblies in " + asm.Name + "; numbered in " + Code(code, levels)); continue; }
                         codes[sub] = code + next * step;
                         taken.Add(code + next * step);
                     }
                 }
                 else if (subs.Count > 0)
-                    warnings?.Add(asm.Name + ": assemblies more than 3 levels deep are numbered in " + code.ToString("000"));
+                    warnings?.Add(asm.Name + ": assemblies more than " + levels + " levels deep are numbered in " + Code(code, levels));
 
                 foreach (DocNode child in asm.Children.Where(Real))
                 {
@@ -218,7 +225,7 @@ namespace AutoDraw.Core
                 {
                     if (!include(n)) continue;
                     if (seq[n] > 999) big = true;
-                    string value = Format(s.NumberPattern, ord, code, seq[n], Letter(s, n.Kind), n.Name);
+                    string value = Format(s.NumberPattern, ord, code, seq[n], Letter(s, n.Kind), n.Name, levels);
                     string cur = current(n) ?? "";
                     rows.Add(new NumberRow
                     {

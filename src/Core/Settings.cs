@@ -44,6 +44,8 @@ namespace AutoDraw.Core
         public Dictionary<string, string> TypeLetters { get; set; } = new Dictionary<string, string>();
         /// <summary>Documents whose number already fits the pattern keep their assembly code and sequence number.</summary>
         public bool NumberKeepExisting { get; set; } = true;
+        /// <summary>Assembly levels with a code of their own (3: 100/110/111, 4: 1000/1100/1110/1111); {asm} has as many digits.</summary>
+        public int NumberLevels { get; set; } = 3;
         /// <summary>Unticked documents that carry a number of this order get their file name back (Inventor's default part number).</summary>
         public bool NumberResetSkipped { get; set; }
         public int NumberWindowW { get; set; } = 960;

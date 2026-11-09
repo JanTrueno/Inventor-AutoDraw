@@ -38,7 +38,7 @@ namespace AutoDraw.UI
         private readonly Dictionary<DocNode, string> _resets = new Dictionary<DocNode, string>();
         private bool _ok;
 
-        private readonly FieldBox _pattern, _digits, _props;
+        private readonly FieldBox _pattern, _digits, _props, _levels;
         private readonly FieldBox[] _letters = new FieldBox[DocKinds.All.Length];
         private readonly CheckBox _keep = new CheckBox(), _reset = new CheckBox();
         private readonly Label _example = new Label();
@@ -68,6 +68,7 @@ namespace AutoDraw.UI
 
             _pattern = new FieldBox(theme) { Text = settings.NumberPattern };
             _digits = new FieldBox(theme) { Text = settings.NumberOrderDigits.ToString() };
+            _levels = new FieldBox(theme) { Text = PartNumbering.Levels(settings).ToString() };
             _props = new FieldBox(theme) { Text = string.Join("; ", settings.NumberProperties), Hint = "e.g. Part Number; artikelnummer" };
             _propsMenu = new InventorButton(theme, "…", false) { Size = new Size(30, 22) };
             _apply = new InventorButton(theme, "Apply", true) { Size = new Size(110, 28), Dock = DockStyle.Right };
@@ -97,7 +98,11 @@ namespace AutoDraw.UI
             top.Controls.Add(Caption("Pattern", lx, 12, 120));
             _pattern.Location = new Point(fx, 12); _pattern.Width = 260;
             top.Controls.Add(_pattern);
-            top.Controls.Add(Caption("{order} {asm} {seq} {type} {name}", fx + 272, 12, 260));
+            top.Controls.Add(Caption("{order} {asm} {seq} {type} {name}", fx + 272, 12, 220));
+            top.Controls.Add(Caption("Assembly levels", fx + 500, 12, 100));
+            _levels.Location = new Point(fx + 604, 12); _levels.Width = 40;
+            top.Controls.Add(_levels);
+            top.Controls.Add(Caption("1–6", fx + 650, 12, 40));
 
             top.Controls.Add(Caption("Order number digits", lx, 42, 128));
             _digits.Location = new Point(fx, 42); _digits.Width = 50;
@@ -146,6 +151,7 @@ namespace AutoDraw.UI
 
             _pattern.TextChanged += (s, e) => { SaveSettings(); Refill(); };
             _digits.TextChanged += (s, e) => { SaveSettings(); Refill(); };
+            _levels.TextChanged += (s, e) => { SaveSettings(); Refill(); };
             _props.TextChanged += (s, e) => { SaveSettings(); _current.Clear(); Refill(); };
             _keep.CheckedChanged += (s, e) => { SaveSettings(); Refill(); };
             _propsMenu.Click += (s, e) => PropsMenu();
@@ -262,6 +268,7 @@ namespace AutoDraw.UI
             _settings.NumberProperties = _props.Text.Split(';').Select(p => p.Trim()).Where(p => p.Length > 0)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             _settings.NumberKeepExisting = _keep.Checked;
+            if (int.TryParse(_levels.Text.Trim(), out int lv) && lv >= 1 && lv <= 6) _settings.NumberLevels = lv;
             _settings.NumberResetSkipped = _reset.Checked;
             _settings.TypeLetters = new Dictionary<string, string>();
             for (int i = 0; i < DocKinds.All.Length; i++)
@@ -288,8 +295,9 @@ namespace AutoDraw.UI
             bool leftovers = problem == null && !_settings.NumberResetSkipped &&
                 _excluded.Any(n => PartNumbering.IsOurs(Current(n), _order, _settings));
             _example.Text = problem == null
-                ? "e.g. " + PartNumbering.Format(_settings.NumberPattern, PartNumbering.OrderPart(_order, _settings.NumberOrderDigits), 110, 2,
-                    PartNumbering.Letter(_settings, DocKind.Lathe), "shaft")
+                ? "e.g. " + PartNumbering.Format(_settings.NumberPattern, PartNumbering.OrderPart(_order, _settings.NumberOrderDigits),
+                    PartNumbering.Levels(_settings) >= 2 ? 11 * (int)Math.Pow(10, PartNumbering.Levels(_settings) - 2) : 1, 2,
+                    PartNumbering.Letter(_settings, DocKind.Lathe), "shaft", PartNumbering.Levels(_settings))
                 : "";
 
             int scroll = _grid.FirstDisplayedScrollingRowIndex;

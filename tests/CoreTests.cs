@@ -189,6 +189,13 @@ internal static class CoreTests
         Check("excluded documents get no row, the rest keep their place", !num.ContainsKey("loose") && !num.ContainsKey("frame") && num["bracket"] == "1777.100.001-Z", string.Join(" ", num.Select(kv => kv.Key + "=" + kv.Value)));
         Check("own number recognised", PartNumbering.IsOurs("1777.100.007-P", "160261777", ns) && !PartNumbering.IsOurs("0448.100.007-P", "160261777", ns)
             && !PartNumbering.IsOurs("FG2701RVS", "160261777", ns));
+        ns.NumberLevels = 4;
+        num = Numbers();
+        all = string.Join(" ", num.Select(kv => kv.Key + "=" + kv.Value));
+        Check("4 levels: codes in thousands", num["main"] == "1777.0000.000-S" && num["frame"] == "1777.1000.000-S" && num["door"] == "1777.1100.000-S"
+            && num["lock"] == "1777.1110.000-S" && num["deep"] == "1777.1111.000-S" && num["x"] == "1777.1111.001-G" && num["pin"] == "1777.1110.001-D", all);
+        Check("4 levels: no warning", warn.Count == 0, string.Join("; ", warn));
+        ns.NumberLevels = 3;
         ns.NumberPattern = "{order}-{asm}-{seq}{type}"; ns.NumberOrderDigits = 0;
         ns.TypeLetters["Lathe"] = "L";
         Check("pattern, all digits and letters configurable", Numbers()["shaft"] == "160261777-200-001L");

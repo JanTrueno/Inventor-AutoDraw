@@ -41,6 +41,8 @@ Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
 - `{order}` – the last digits of the order number (4 by default, 0 = all), `{asm}` – assembly code, `{seq}` – 000 for
   the assembly itself, then 001, 002 … in tree order, `{type}` – type letter, `{name}` – file name.
 - Type letters (configurable): S assembly, Z folded, P flat, D lathe, B tube, G general.
+- **Assembly levels** (1–6, default 3) sets how many sub-assembly levels get a code of their own; `{asm}` has as many
+  digits. With 4: `1000` … `9000`, `1100` … `1900`, `1110` … `1190`, `1111` … `1119`.
 - Deeper assemblies, or a tenth one on a level, are numbered inside the assembly above them.
 - A part used in several assemblies is numbered in the first one. Content Center and read-only files are skipped;
   any row can be unticked.
