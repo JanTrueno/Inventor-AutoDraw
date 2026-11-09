@@ -268,23 +268,41 @@ namespace AutoDraw.Drawing
                 try { if (p.GetBrowserNodeFromObject(drawing.Sheets[1]) != null) { pane = p; break; } } catch { }
             }
             if (pane == null) { Warnings.Add("Could not sort the sheets (no browser)."); return; }
-            try
+
+            // Inventor refuses (E_FAIL) to move the active sheet: the sheet it goes in front of is activated first. When
+            // that still fails, the sheet is placed after the one that should come before it.
+            bool Move(Func<bool> attempt, string what)
             {
-                for (int i = 0; i < desired.Count && i < drawing.Sheets.Count; i++)
-                {
-                    Sheet at = drawing.Sheets[i + 1];
-                    if (NameOf(at) == NameOf(desired[i])) continue;
-                    pane.Reorder(pane.GetBrowserNodeFromObject(at), true, pane.GetBrowserNodeFromObject(desired[i]), Type.Missing);
-                }
+                try { return attempt(); }
+                catch (Exception ex) { Log.Write("Sorting: " + what + " failed: " + ex.Message); return false; }
             }
-            catch (Exception ex)
-            {
-                Log.Write("Sorting the sheets failed: " + ex);
-                Warnings.Add("Could not sort the sheets: " + ex.Message);
-                return;
-            }
+            int failed = 0;
             for (int i = 0; i < desired.Count && i < drawing.Sheets.Count; i++)
-                if (NameOf(drawing.Sheets[i + 1]) != NameOf(desired[i])) { Warnings.Add("The sheets are not fully in order."); break; }
+            {
+                Sheet at = drawing.Sheets[i + 1];
+                Sheet move = desired[i];
+                if (NameOf(at) == NameOf(move)) continue;
+                string label = NameOf(move);
+                bool ok = Move(() =>
+                {
+                    at.Activate();
+                    pane.Reorder(pane.GetBrowserNodeFromObject(at), true, pane.GetBrowserNodeFromObject(move), Type.Missing);
+                    return true;
+                }, label + " before " + NameOf(at));
+                if (!ok && i > 0)
+                    ok = Move(() =>
+                    {
+                        Sheet prev = desired[i - 1];
+                        prev.Activate();
+                        pane.Reorder(pane.GetBrowserNodeFromObject(prev), false, pane.GetBrowserNodeFromObject(move), Type.Missing);
+                        return true;
+                    }, label + " after " + NameOf(desired[i - 1]));
+                if (!ok) failed++;
+            }
+            int wrong = 0;
+            for (int i = 0; i < desired.Count && i < drawing.Sheets.Count; i++)
+                if (NameOf(drawing.Sheets[i + 1]) != NameOf(desired[i])) wrong++;
+            if (wrong > 0) Warnings.Add("Could not sort " + Math.Max(failed, 1) + " sheet(s); " + wrong + " are not in order.");
         }
 
         // ----- iLogic -----------------------------------------------------------------------------------------------

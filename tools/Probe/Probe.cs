@@ -62,7 +62,22 @@ internal static class Probe
             {
                 Sheet last = d.Sheets[d.Sheets.Count];
                 string name = last.Name;
-                pane.Reorder(pane.GetBrowserNodeFromObject(d.Sheets[1]), true, pane.GetBrowserNodeFromObject(last), Type.Missing);
+                last.Activate();
+                try
+                {
+                    pane.Reorder(pane.GetBrowserNodeFromObject(d.Sheets[1]), true, pane.GetBrowserNodeFromObject(last), Type.Missing);
+                    Console.WriteLine("active sheet moved: OK");
+                }
+                catch (Exception ex) { Console.WriteLine("active sheet moved: FAILED " + ex.Message); }
+                Sheet target = d.Sheets[1];
+                if (target.Name == last.Name) target = d.Sheets[2];
+                target.Activate();
+                try
+                {
+                    pane.Reorder(pane.GetBrowserNodeFromObject(target), true, pane.GetBrowserNodeFromObject(last), Type.Missing);
+                    Console.WriteLine("target active, moved: OK");
+                }
+                catch (Exception ex) { Console.WriteLine("target active, moved: FAILED " + ex.Message); }
                 Console.WriteLine("moved " + name + "; now first: " + d.Sheets[1].Name + ", second: " + d.Sheets[2].Name);
             }
         }
