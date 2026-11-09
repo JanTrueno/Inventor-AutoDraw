@@ -112,6 +112,20 @@ namespace AutoDraw.Drawing
             ig.Prefer = Corner.TopRight;
         }
 
+        /// <summary>
+        /// Keeps the views in their zone, unless they get a larger scale anywhere on the sheet (a tall folded part next
+        /// to its flat pattern): then their area is the whole sheet.
+        /// </summary>
+        public static void LargerOrthoArea(IList<ViewGroup> groups, Region usable, IList<Region> obstacles, ViewGroup og)
+        {
+            Region? zone = og.Area;
+            if (zone == null) return;
+            double inZone = Pack(groups, usable, obstacles) ? og.Scale : 0;
+            og.Area = null;
+            double anywhere = Pack(groups, usable, obstacles) ? og.Scale : 0;
+            if (anywhere <= inZone + 1e-9) og.Area = zone;
+        }
+
         // ----- placing ----------------------------------------------------------------------------------------------------
 
         private static bool TryAt(IList<ViewGroup> groups, double s, Region usable, IList<Region> obstacles)

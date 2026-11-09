@@ -26,7 +26,15 @@ namespace AutoDraw.Drawing
             _sheet = sheet;
             _tg = app.TransientGeometry;
             _dims = sheet.DrawingDimensions.GeneralDimensions;
-            try { sheet.Update(); } catch { }   // the views were just placed: make their edges current before dimensioning
+            // the views were just placed: make them precise (not raster previews) and current before dimensioning
+            try
+            {
+                bool raster = false;
+                foreach (DrawingView v in sheet.DrawingViews) { try { if (v.IsRasterView) { raster = true; break; } } catch { } }
+                if (raster) ((DrawingDocument)sheet.Parent).MakeAllViewsPrecise();
+            }
+            catch (Exception ex) { Log.Write("Making the views precise failed: " + ex.Message); }
+            try { sheet.Update(); } catch { }
         }
 
         private sealed class Curve
@@ -162,7 +170,7 @@ namespace AutoDraw.Drawing
         /// pair of edge directions that meet at an angle other than 90°, the two nearest edges get an angle dimension,
         /// its text inside the angle between them.
         /// </summary>
-        public void Angles(DrawingView view, int max = 8)
+        public void Angles(DrawingView view, bool square = false, int max = 8)
         {
             List<Curve> lines = Read(view).Where(k => k.IsLine && IsOutline(k)).ToList();
             double diag = Math.Sqrt(view.Width * view.Width + view.Height * view.Height);
@@ -182,7 +190,7 @@ namespace AutoDraw.Drawing
                 for (int j = i + 1; j < dirs.Count && made < max; j++)
                 {
                     double between = AngleBetween(dirs[i], dirs[j]) * 180 / Math.PI;   // 0..90
-                    if (between < 1 || Math.Abs(between - 90) < 1) continue;
+                    if (between < 1 || (!square && Math.Abs(between - 90) < 1)) continue;
                     var a = edges.Where(e => AngleBetween(e.Dir, dirs[i]) < 0.01).ToList();
                     var b = edges.Where(e => AngleBetween(e.Dir, dirs[j]) < 0.01).ToList();
                     double best = double.MaxValue;
@@ -403,7 +411,7 @@ namespace AutoDraw.Drawing
                 foreach (Curve k in vertical) anchors.Add((_sheet.CreateGeometryIntent(k.C, Type.Missing), k.SX));
                 GeometryIntent r = Extreme(curves, Side.Right, out double rx);
                 if (r != null) anchors.Add((r, rx));
-                Chain(anchors, true, box.MinY - Gap);
+                Chain(anchors, true, box.MinY - Gap, -1);
             }
 
             // horizontal bend lines → vertical chain right of the view
@@ -416,7 +424,7 @@ namespace AutoDraw.Drawing
                 foreach (Curve k in horizontal) anchors.Add((_sheet.CreateGeometryIntent(k.C, Type.Missing), k.SY));
                 GeometryIntent t = Extreme(curves, Side.Top, out double ty);
                 if (t != null) anchors.Add((t, ty));
-                Chain(anchors, false, box.MaxX + Gap);
+                Chain(anchors, false, box.MaxX + Gap, 1);
             }
 
             // bend notes: UP/DOWN, angle and radius, in the bend note style of the template
@@ -429,15 +437,27 @@ namespace AutoDraw.Drawing
             }
         }
 
-        private void Chain(List<(GeometryIntent I, double At)> anchors, bool horizontal, double line)
+        /// <summary>
+        /// A chain of dimensions on one line; a short piece (its text would not fit between the arrows) that follows
+        /// another short piece goes one step further out, so the texts stay apart.
+        /// </summary>
+        private void Chain(List<(GeometryIntent I, double At)> anchors, bool horizontal, double line, double outward)
         {
+            const double shortPiece = 1.6;   // cm on the sheet
+            bool lastShortOut = false, lastShort = false;
             for (int i = 0; i + 1 < anchors.Count; i++)
             {
-                if (Math.Abs(anchors[i + 1].At - anchors[i].At) < 1e-3) continue;
+                double len = Math.Abs(anchors[i + 1].At - anchors[i].At);
+                if (len < 1e-3) continue;
+                bool isShort = len < shortPiece;
+                bool outer = isShort && lastShort && !lastShortOut;
+                double at = line + (outer ? outward * Step : 0);
                 double mid = (anchors[i].At + anchors[i + 1].At) / 2;
-                Point2d p = horizontal ? _tg.CreatePoint2d(mid, line) : _tg.CreatePoint2d(line, mid);
+                Point2d p = horizontal ? _tg.CreatePoint2d(mid, at) : _tg.CreatePoint2d(at, mid);
                 Linear(p, anchors[i].I, anchors[i + 1].I,
                     horizontal ? DimensionTypeEnum.kHorizontalDimensionType : DimensionTypeEnum.kVerticalDimensionType);
+                lastShortOut = outer;
+                lastShort = isShort;
             }
         }
 
@@ -453,17 +473,28 @@ namespace AutoDraw.Drawing
         public void HoleNotes(DrawingView view, int max = 8)
         {
             List<Curve> circles = Read(view).Where(k => k.Type == Curve2dTypeEnum.kCircleCurve2d && IsOutline(k)).ToList();
+            var box = Box(view);
+            const double away = 3.2;   // outside the overall and chain dimensions
+            var used = new Dictionary<int, List<double>>();   // side → positions along it already taken
             var sizes = new HashSet<long>();
             foreach (Curve k in circles)
             {
                 if (sizes.Count >= max) break;
                 long size = (long)Math.Round((k.MaxX - k.MinX) * 1000);
                 if (!sizes.Add(size)) continue;
-                try
-                {
-                    Point2d p = _tg.CreatePoint2d(k.MaxX + 1.2, k.MaxY + 1.2);
-                    _sheet.DrawingNotes.HoleThreadNotes.Add(p, _sheet.CreateGeometryIntent(k.C, Type.Missing), false, Type.Missing);
-                }
+                double cx = (k.MinX + k.MaxX) / 2, cy = (k.MinY + k.MaxY) / 2;
+                // outside the part, on the side the hole is nearest to: 0 left, 1 right, 2 bottom, 3 top
+                double[] dist = { cx - box.MinX, box.MaxX - cx, cy - box.MinY, box.MaxY - cy };
+                int side = Array.IndexOf(dist, dist.Min());
+                double along = side < 2 ? cy : cx;
+                if (!used.TryGetValue(side, out List<double> taken)) used[side] = taken = new List<double>();
+                while (taken.Any(t => Math.Abs(t - along) < 1.0)) along += side < 2 ? -1.0 : 1.0;
+                taken.Add(along);
+                Point2d p = side == 0 ? _tg.CreatePoint2d(box.MinX - away, along)
+                    : side == 1 ? _tg.CreatePoint2d(box.MaxX + away, along)
+                    : side == 2 ? _tg.CreatePoint2d(along, box.MinY - away)
+                    : _tg.CreatePoint2d(along, box.MaxY + away);
+                try { _sheet.DrawingNotes.HoleThreadNotes.Add(p, _sheet.CreateGeometryIntent(k.C, Type.Missing), false, Type.Missing); }
                 catch { /* not a hole feature: no note */ }
             }
         }

@@ -51,6 +51,11 @@ namespace AutoDraw.Drawing
             if (cancelled()) return null;
 
             progress("Creating the drawing…");
+            // Background updates leave new views as raster previews for a while, and Inventor refuses dimensions on a
+            // raster view: switch them off while the drawing is made.
+            bool? background = null;
+            try { background = _app.DrawingOptions.EnableBackgroundUpdates; _app.DrawingOptions.EnableBackgroundUpdates = false; }
+            catch (Exception ex) { Log.Write("Switching off background updates failed: " + ex.Message); }
             var drawing = (DrawingDocument)_app.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject, template, false);
             bool done = false;
             try
@@ -100,6 +105,7 @@ namespace AutoDraw.Drawing
             }
             finally
             {
+                if (background != null) { try { _app.DrawingOptions.EnableBackgroundUpdates = background.Value; } catch { } }
                 if (!done) { try { drawing.Close(true); } catch { } }
             }
         }
@@ -159,16 +165,13 @@ namespace AutoDraw.Drawing
             foreach (DocNode n in all)
                 foreach (KeyValuePair<string, string> kv in n.Edited) Set(n.Doc, kv.Key, kv.Value, n);
 
-            // sheet metal parts without a flat pattern get one, so the flat pattern view can be placed
-            foreach (SheetJob j in jobs.Where(j => j.Node.Kind == DocKind.SheetMetalFolded || j.Node.Kind == DocKind.SheetMetalFlat))
+            // sheet metal parts get a flat pattern when they have none, seen from the side where most bends go up
+            foreach (SheetJob j in jobs.Where(j => j.Part == 0 && (j.Node.Kind == DocKind.SheetMetalFolded || j.Node.Kind == DocKind.SheetMetalFlat)))
             {
                 try
                 {
-                    if (j.Node.Doc is PartDocument p && p.ComponentDefinition is SheetMetalComponentDefinition sm && !sm.HasFlatPattern)
-                    {
-                        CreateFlatPatternAndFlip(p, sm);
+                    if (j.Node.Doc is PartDocument p && p.ComponentDefinition is SheetMetalComponentDefinition sm && OrientFlatPattern(p, sm))
                         changed.Add(j.Node.Doc);
-                    }
                 }
                 catch (Exception ex) { Warnings.Add(j.Node.Name + ": no flat pattern (" + ex.Message + ")"); }
             }
@@ -192,29 +195,67 @@ namespace AutoDraw.Drawing
         }
 
         /// <summary>
-        /// As the company's Create_Flatpattern_andflip macro: unfold, then flip the base face so the flat pattern is seen
-        /// from the other side. Unfolding a part that is not open in a window can fail; it is then opened, unfolded and
-        /// its window closed again.
+        /// As the company's Create_Flatpattern_andflip macro, for every sheet metal part: a missing flat pattern is made
+        /// (unfold) and flipped; a flat pattern whose bends mostly go down is flipped (FlipBaseFace), so the bends read
+        /// UP. Unfolding or flipping a part that is not open in a window can fail; it is then opened in a window, which is
+        /// closed again afterwards. Returns true when the part changed.
         /// </summary>
-        private void CreateFlatPatternAndFlip(PartDocument part, SheetMetalComponentDefinition sm)
+        private bool OrientFlatPattern(PartDocument part, SheetMetalComponentDefinition sm)
         {
             View opened = null;
-            try
+            void InWindow(Action a)
             {
-                try { sm.Unfold(); }
+                try { a(); }
                 catch
                 {
-                    _app.Documents.Open(((Document)part).FullFileName, true);
-                    try { opened = _app.ActiveView; } catch { }
-                    sm.Unfold();
+                    if (opened == null)
+                    {
+                        _app.Documents.Open(((Document)part).FullFileName, true);
+                        try { opened = _app.ActiveView; } catch { }
+                    }
+                    a();
                 }
-                try { sm.FlatPattern.FlipBaseFace(); } catch (Exception ex) { Log.Write("Flipping the flat pattern failed: " + ex.Message); }
-                try { sm.FlatPattern.ExitEdit(); } catch { }
+            }
+            try
+            {
+                bool created = false, flipped = false;
+                if (!sm.HasFlatPattern)
+                {
+                    InWindow(() => sm.Unfold());
+                    created = true;
+                }
+                (int up, int down) = BendDirections(sm.FlatPattern);
+                // a new flat pattern is flipped as the macro does; an existing one when most of its bends go down
+                bool flip = up + down == 0 ? created : down > up;
+                if (flip)
+                {
+                    InWindow(() =>
+                    {
+                        if (!created) { try { sm.FlatPattern.Edit(); } catch { } }
+                        sm.FlatPattern.FlipBaseFace();
+                    });
+                    flipped = true;
+                    (up, down) = BendDirections(sm.FlatPattern);
+                    if (down > up && created)   // the flip made it worse: back again
+                    {
+                        sm.FlatPattern.FlipBaseFace();
+                    }
+                }
+                if (created || flipped) { try { sm.FlatPattern.ExitEdit(); } catch { } }
+                return created || flipped;
             }
             finally
             {
                 if (opened != null) { try { opened.Close(); } catch { } }
             }
+        }
+
+        private static (int Up, int Down) BendDirections(FlatPattern fp)
+        {
+            int up = 0, down = 0;
+            try { foreach (FlatBendResult r in fp.FlatBendResults) { if (r.IsDirectionUp) up++; else down++; } }
+            catch (Exception ex) { Log.Write("Reading the bend directions failed: " + ex.Message); }
+            return (up, down);
         }
 
         // ----- sheets -----------------------------------------------------------------------------------------------
@@ -332,18 +373,23 @@ namespace AutoDraw.Drawing
             groups.Add((og, v));
             groups.Add((ig, Views.Of(iso)));
             SheetMetalZones(f, fg, og, ig);
+            // tall parts: when the folded views get a larger scale beside the flat pattern than above it, they go there
+            Layout.LargerOrthoArea(groups.Select(x => x.Item1).ToList(), f.Usable, f.Obstacles, og);
             Arrange(f, f.Obstacles, groups.ToArray());
 
-            // the view that shows the bends as arcs is the profile: leg lengths and angles there, outside sizes everywhere
+            // the views that show the bends as arcs are profiles: leg lengths and all angles there (90° included);
+            // outside sizes on every folded view
             Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             DrawingView[] folded = new[] { v.Base, v.Below, v.Side }.Where(x => x != null).ToArray();
-            DrawingView profile = folded.OrderByDescending(Dimensioner.ArcCount).First();
-            d.Overall(v.Base, true, true, v.Base == profile ? 1 : 0);
-            if (v.Below != null) d.Overall(v.Below, false, true, v.Below == profile ? 1 : 0);
-            if (v.Side != null) d.Overall(v.Side, true, false, v.Side == profile ? 1 : 0);
-            d.Legs(profile);
-            foreach (DrawingView view in folded) d.Angles(view);
+            var arcs = folded.ToDictionary(x => x, Dimensioner.ArcCount);
+            var profiles = new HashSet<DrawingView>(folded.Where(x => x != v.Base && arcs[x] > 0));
+            if (profiles.Count == 0) profiles.Add(folded.OrderByDescending(x => arcs[x]).First());
+            d.Overall(v.Base, true, true, profiles.Contains(v.Base) ? 1 : 0);
+            if (v.Below != null) d.Overall(v.Below, false, true, profiles.Contains(v.Below) ? 1 : 0);
+            if (v.Side != null) d.Overall(v.Side, true, false, profiles.Contains(v.Side) ? 1 : 0);
+            foreach (DrawingView view in profiles) d.Legs(view);
+            foreach (DrawingView view in folded) d.Angles(view, profiles.Contains(view));
             if (flat != null) FlatDimensions(d, flat);
         }
 
