@@ -276,12 +276,17 @@ namespace AutoDraw.Drawing
         private void Reorder(DrawingDocument drawing, List<Sheet> desired)
         {
             string NameOf(Sheet s) { try { return s.Name; } catch { return ""; } }
-            BrowserPane pane = null;
+            // the Model pane (DlHierarchy) first: other panes (Vault, iLogic …) may know the sheets but cannot move them
+            var panes = new List<BrowserPane>();
             foreach (BrowserPane p in ((Document)drawing).BrowserPanes)
             {
-                try { if (p.GetBrowserNodeFromObject(drawing.Sheets[1]) != null) { pane = p; break; } } catch { }
+                try { if (p.GetBrowserNodeFromObject(drawing.Sheets[1]) != null) panes.Add(p); } catch { }
             }
-            if (pane == null) { Warnings.Add("Could not sort the sheets (no browser)."); return; }
+            panes = panes.OrderBy(p => { try { return p.InternalName == "DlHierarchy" ? 0 : p.Name == "Model" ? 1 : 2; } catch { return 3; } }).ToList();
+            try { Log.Write("Sorting: panes " + string.Join(", ", panes.Select(p => { try { return p.Name + "/" + p.InternalName; } catch { return "?"; } }))); } catch { }
+            if (panes.Count == 0) { Warnings.Add("Could not sort the sheets (no browser)."); return; }
+            BrowserPane pane = panes[0];
+            try { pane.Activate(); } catch { }
 
             // Inventor refuses (E_FAIL) to move the active sheet: the sheet it goes in front of is activated first. When
             // that still fails, the sheet is placed after the one that should come before it.
@@ -311,7 +316,18 @@ namespace AutoDraw.Drawing
                         pane.Reorder(pane.GetBrowserNodeFromObject(prev), false, pane.GetBrowserNodeFromObject(move), Type.Missing);
                         return true;
                     }, label + " after " + NameOf(desired[i - 1]));
+                for (int k = 1; !ok && k < panes.Count; k++)
+                {
+                    BrowserPane other = panes[k];
+                    ok = Move(() =>
+                    {
+                        other.Reorder(other.GetBrowserNodeFromObject(at), true, other.GetBrowserNodeFromObject(move), Type.Missing);
+                        pane = other;
+                        return true;
+                    }, label + " in pane " + other.Name);
+                }
                 if (!ok) failed++;
+                if (!ok && failed >= 3 && failed == i + 1) { Log.Write("Sorting: giving up after 3 failures"); break; }
             }
             int wrong = 0;
             for (int i = 0; i < desired.Count && i < drawing.Sheets.Count; i++)
