@@ -140,7 +140,7 @@ namespace AutoDraw.UI
                 row.Cells[kindIndex] = new DataGridViewTextBoxCell();
                 row.Cells[kindIndex].ReadOnly = true;
             }
-            if (n.IsGroup)
+            if (n.IsGroup || n.IsVirtual)
                 foreach (DataGridViewCell c in row.Cells) c.ReadOnly = true;
             if (!n.IsAssembly) row.Cells[Columns[ColSheets].Index].ReadOnly = true;
             if (n.IsGroup) row.DefaultCellStyle.ForeColor = _theme.Dim;
@@ -156,7 +156,7 @@ namespace AutoDraw.UI
             try
             {
                 r.Cells[ColName].Value = n.Name;
-                if (n.IsGroup) return;
+                if (n.IsGroup || n.IsVirtual) return;
                 r.Cells[ColKind].Value = DocKinds.Label(n.Kind);
                 r.Cells[ColQty].Value = n.QuantityValue;
                 r.Cells[ColSheets].Value = n.IsAssembly ? n.SheetCount(LargeLimit()).ToString() : "";
@@ -207,7 +207,7 @@ namespace AutoDraw.UI
             DataGridViewCell cell = Rows[e.RowIndex].Cells[e.ColumnIndex];
             if (Columns[e.ColumnIndex].Name == ColRedo)
             {
-                if (Rows[e.RowIndex].Tag is DocNode rn && !rn.IsGroup) { rn.Redo = !rn.Redo; Fill(Rows[e.RowIndex]); }
+                if (Rows[e.RowIndex].Tag is DocNode rn && !rn.IsGroup && !rn.IsVirtual) { rn.Redo = !rn.Redo; Fill(Rows[e.RowIndex]); }
                 return;
             }
             if (cell.ReadOnly || e.ColumnIndex == Columns[ColName].Index) return;
@@ -279,10 +279,10 @@ namespace AutoDraw.UI
                             : new[] { new PointF(c.X + 4, c.Y + 2), new PointF(c.X + 4, c.Bottom - 2), new PointF(c.Right - 3, c.Y + 6) });
             }
             Rectangle box = BoxRect(n, e.CellBounds);
-            DrawBox(g, box, n.IsGroup ? n.Children.Count > 0 && n.Children.All(c => c.Checked) : n.Checked);
+            DrawBox(g, box, n.IsGroup || n.IsVirtual ? n.Children.Count > 0 && n.Children.Where(c => !c.IsGroup).All(c => c.Checked) : n.Checked);
 
             int x = box.Right + 6;
-            Color ink = n.Checked || n.IsGroup ? _theme.Text : _theme.Dim;
+            Color ink = n.Checked || n.IsGroup || n.IsVirtual ? _theme.Text : _theme.Dim;
             Font font = n.IsMain || n.IsGroup ? new Font(Font, FontStyle.Bold) : Font;
             string text = n.IsGroup ? n.Name + " (" + n.Children.Count + ")" : n.Name;
             TextRenderer.DrawText(g, text, font, new Rectangle(x, e.CellBounds.Y, Math.Max(10, e.CellBounds.Right - x - 4), e.CellBounds.Height), ink,
@@ -341,8 +341,9 @@ namespace AutoDraw.UI
         /// <summary>Ticks or unticks a row; for an assembly or the Content Center group, everything under it too.</summary>
         private void Toggle(DocNode n)
         {
-            bool on = n.IsGroup ? !n.Children.All(c => c.Checked) : !n.Checked;
-            if (!n.IsGroup) n.Checked = on;
+            bool on = n.IsGroup ? !n.Children.All(c => c.Checked)
+                : n.IsVirtual ? !n.Children.Where(c => !c.IsGroup).All(c => c.Checked) : !n.Checked;
+            if (!n.IsGroup && !n.IsVirtual) n.Checked = on;
             foreach (DocNode d in n.Descendants()) if (!d.IsGroup) d.Checked = on;
             Invalidate();
             PlanChanged?.Invoke();

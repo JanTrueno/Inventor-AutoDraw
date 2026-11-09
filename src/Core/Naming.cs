@@ -35,6 +35,14 @@ namespace AutoDraw.Core
             return path;
         }
 
+        /// <summary>The name of several assemblies in one drawing: A+B+C, or A+2 more when that gets long.</summary>
+        public static string GroupName(IList<string> names)
+        {
+            if (names.Count == 0) return "";
+            string all = string.Join("+", names);
+            return names.Count == 1 || all.Length <= 40 ? all : names[0] + "+" + (names.Count - 1) + " more";
+        }
+
         private static string Clean(string s)
         {
             char[] bad = Path.GetInvalidFileNameChars();

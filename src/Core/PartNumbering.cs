@@ -223,7 +223,7 @@ namespace AutoDraw.Core
                 }
                 foreach (DocNode n in g.Value)
                 {
-                    if (!include(n)) continue;
+                    if (!include(n) || n.IsVirtual) continue;
                     if (seq[n] > 999) big = true;
                     string value = Format(s.NumberPattern, ord, code, seq[n], Letter(s, n.Kind), n.Name, levels);
                     string cur = current(n) ?? "";

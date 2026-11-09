@@ -9,7 +9,7 @@ using Path = System.IO.Path;
 namespace AutoDraw.Drawing
 {
     /// <summary>
-    /// Makes the production drawing of a main assembly: writes Aantal and the sheet number (bewerking, bewerkingBlad)
+    /// Makes the production drawing of a main assembly (or of several assemblies): writes Aantal and the sheet number (bewerking, bewerkingBlad)
     /// into the documents, creates one .idw from the chosen template with a sheet per document in sheet-plan order, puts
     /// the views, parts lists, balloons and dimensions on each sheet, and saves it next to the main assembly.
     /// </summary>
@@ -38,7 +38,7 @@ namespace AutoDraw.Drawing
         }
 
         /// <summary>Makes and saves the drawing; returns its path, or null when cancelled.</summary>
-        public string Run(AssemblyDocument main, DocNode root, List<SheetJob> jobs, IEnumerable<DocNode> all, string order,
+        public string Run(IList<AssemblyDocument> assemblies, DocNode root, List<SheetJob> jobs, IEnumerable<DocNode> all, string order,
             Action<string> progress, Func<bool> cancelled)
         {
             string template = _settings.TemplatePath;
@@ -47,7 +47,7 @@ namespace AutoDraw.Drawing
             if (jobs.Count == 0) throw new InvalidOperationException("Tick at least one document.");
 
             progress("Writing iProperties…");
-            WriteProperties(main, jobs, all, order);
+            WriteProperties(assemblies, jobs, all, order);
             if (cancelled()) return null;
 
             progress("Creating the drawing…");
@@ -66,6 +66,7 @@ namespace AutoDraw.Drawing
                     try { Props.Set((Document)drawing, _settings.DrawingOrderProperty.Trim(), order.Trim()); }
                     catch (Exception ex) { Warnings.Add("Drawing iProperty " + _settings.DrawingOrderProperty + ": " + ex.Message); }
                 }
+                SheetMap.Remember(drawing, assemblies);
                 PrepareSheets(drawing, jobs.Count);
                 for (int i = 0; i < jobs.Count; i++)
                 {
@@ -93,7 +94,7 @@ namespace AutoDraw.Drawing
 
                 try { OnSheet?.Invoke(jobs.Count, jobs.Count, ""); } catch { }
                 progress("Saving…");
-                string folder = Path.GetDirectoryName(((Document)main).FullFileName) ?? "";
+                string folder = Path.GetDirectoryName(((Document)assemblies[0]).FullFileName) ?? "";
                 string path = Naming.DrawingPath(folder, order, root.Name, DateTime.Now);
                 bool silent = _app.SilentOperation;
                 _app.SilentOperation = true;
@@ -129,13 +130,13 @@ namespace AutoDraw.Drawing
         /// and, when <paramref name="deleteOthers"/>, the sheets of documents that are unticked or no longer in the
         /// assembly; then puts all sheets in sheet-plan order (other sheets at the end), names them and saves.
         /// </summary>
-        public void Update(DrawingDocument drawing, AssemblyDocument main, List<SheetJob> jobs, IEnumerable<DocNode> all, string order,
+        public void Update(DrawingDocument drawing, IList<AssemblyDocument> assemblies, List<SheetJob> jobs, IEnumerable<DocNode> all, string order,
             bool deleteOthers, Action<string> progress, Func<bool> cancelled)
         {
             if (jobs.Count == 0) throw new InvalidOperationException("Tick at least one document.");
             try { ((Document)drawing).Activate(); } catch { }
             progress("Writing iProperties…");
-            WriteProperties(main, jobs, all, order);
+            WriteProperties(assemblies, jobs, all, order);
             if (cancelled()) return;
 
             bool? background = null;
@@ -149,6 +150,7 @@ namespace AutoDraw.Drawing
                     try { Props.Set((Document)drawing, _settings.DrawingOrderProperty.Trim(), order.Trim()); }
                     catch (Exception ex) { Warnings.Add("Drawing iProperty " + _settings.DrawingOrderProperty + ": " + ex.Message); }
                 }
+                SheetMap.Remember(drawing, assemblies);
 
                 List<SheetOwner> owners = SheetMap.Read(drawing);
                 var byKey = new Dictionary<string, List<Sheet>>(StringComparer.OrdinalIgnoreCase);
@@ -367,7 +369,7 @@ namespace AutoDraw.Drawing
 
         // ----- iProperties ------------------------------------------------------------------------------------------
 
-        private void WriteProperties(AssemblyDocument main, List<SheetJob> jobs, IEnumerable<DocNode> all, string order)
+        private void WriteProperties(IList<AssemblyDocument> assemblies, List<SheetJob> jobs, IEnumerable<DocNode> all, string order)
         {
             var changed = new HashSet<Document>();
             void Set(Document doc, string name, string value, DocNode node)
@@ -381,7 +383,7 @@ namespace AutoDraw.Drawing
                 }
             }
 
-            Set((Document)main, _settings.OrderProperty, order.Trim(), null);
+            foreach (AssemblyDocument a in assemblies) Set((Document)a, _settings.OrderProperty, order.Trim(), null);
             foreach (SheetJob j in jobs.Where(j => j.Part == 0))
             {
                 Set(j.Node.Doc, _settings.QuantityProperty, j.Node.QuantityValue, j.Node);

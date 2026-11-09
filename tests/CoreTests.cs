@@ -208,6 +208,25 @@ internal static class CoreTests
         ns.NumberPattern = "{order}-{asm}-{seq}{type}"; ns.NumberOrderDigits = 0;
         ns.TypeLetters["Lathe"] = "L";
         Check("pattern, all digits and letters configurable", Numbers()["shaft"] == "160261777-200-001L");
+        ns.NumberPattern = "{order}.{asm}.{seq}-{type}"; ns.NumberOrderDigits = 4; ns.TypeLetters.Remove("Lathe");
+
+        // several separate assemblies in one drawing: a root without a document or sheet
+        DocNode group = T("A+B", DocKind.Assembly,
+            T("frameA", DocKind.Assembly, T("plateA", DocKind.SheetMetalFlat)),
+            T("frameB", DocKind.Assembly, T("subB", DocKind.Assembly, T("shaftB", DocKind.Lathe)), T("plateB", DocKind.SheetMetalFlat)));
+        group.IsMain = true; group.IsVirtual = true; group.Checked = false;
+        var gn = PartNumbering.Plan(group, "160261777", ns, n => "", null, warn).ToDictionary(r => r.Node.Name, r => r.Value);
+        string gall = string.Join(" ", gn.Select(kv => kv.Key + "=" + kv.Value));
+        Check("separate assemblies: no number for the group", !gn.ContainsKey("A+B"), gall);
+        Check("separate assemblies in hundreds", gn["frameA"] == "1777.100.000-S" && gn["plateA"] == "1777.100.001-P" && gn["frameB"] == "1777.200.000-S"
+            && gn["subB"] == "1777.210.000-S" && gn["shaftB"] == "1777.210.001-D" && gn["plateB"] == "1777.200.001-P", gall);
+        var gnodes = new List<DocNode> { group }.Concat(group.Descendants()).ToList();
+        group.Checked = true;   // even ticked, the group gets no sheet
+        List<SheetJob> gjobs = SheetPlan.Number(gnodes, 15);
+        Check("separate assemblies: group gets no sheet, both assemblies do", gjobs.All(j => j.Node != group) && gjobs[0].Node.Name == "frameA" && gjobs[1].Node.Name == "frameB",
+            string.Join(",", gjobs.Select(j => j.Node.Name)));
+        Check("group name", Naming.GroupName(new[] { "frame", "door" }) == "frame+door"
+            && Naming.GroupName(new[] { "a long assembly name", "another long assembly", "third" }) == "a long assembly name+2 more");
 
         Console.WriteLine(_failed == 0 ? "All passed." : _failed + " failed.");
         return _failed == 0 ? 0 : 1;

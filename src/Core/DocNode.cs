@@ -55,7 +55,9 @@ namespace AutoDraw.Core
         public bool IsAssembly;
         public bool IsContentCenter;
         public bool IsGroup;             // the "Content Center" group row, not a document
-        public bool IsMain;              // the main assembly
+        public bool IsMain;              // the main assembly (or the group of several assemblies)
+        /// <summary>The top row when several separate assemblies go into one drawing: no document, no sheet.</summary>
+        public bool IsVirtual;
 
         public DocKind Detected = DocKind.General;
         public DocKind? KindOverride;

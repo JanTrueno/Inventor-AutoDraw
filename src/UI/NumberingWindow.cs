@@ -237,6 +237,7 @@ namespace AutoDraw.UI
         private void Collect(DocNode n)
         {
             if (n.IsGroup || n.IsContentCenter) return;
+            if (n.IsVirtual) { foreach (DocNode c in n.Children) Collect(c); return; }
             _nodes.Add(n);
             if (!n.Checked && !n.IsMain) _excluded.Add(n);   // unticked in the main tree: unticked here too
             try

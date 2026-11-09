@@ -13,6 +13,20 @@ part type, parts lists with balloons, overall dimensions and, on flat patterns, 
 5. **Generate drawing**. The drawing is saved next to the assembly as `<ordernummer>_<assembly>_<y-M-d>.idw`
    (`_2`, `_3` … when that name is taken) and opened.
 
+## Several assemblies in one drawing
+
+For separate assemblies without a main assembly: open one, start AutoDraw, then **Assemblies…** → **Add** an open
+assembly or **Add from file…** (or click AutoDraw in another open assembly and answer Yes). The tree gets a top row
+`A+B+…` without a sheet, with each assembly under it as if it were a sub-assembly:
+
+- sheets: the assemblies first, then all parts by type, as usual; a part used in several assemblies has one sheet,
+  with the total quantity;
+- **Numbering…**: the assemblies get 100, 200, 300 …, their sub-assemblies 110, 120 … (the top row has no number);
+- the order number is written to every assembly; the drawing is saved next to the first one as
+  `<ordernummer>_A+B_<date>.idw` (`A+2 more` when the names get long);
+- the drawing remembers its assemblies (custom iProperty `AutoDraw Assemblies`), so **Update drawing** opens for all
+  of them again. **Assemblies…** also adds or takes out an assembly there; ticks, types and typed values are kept.
+
 ## Updating a drawing
 
 Open a drawing made by AutoDraw and click **AutoDraw** on the **Place Views** tab. The window opens for the drawing's

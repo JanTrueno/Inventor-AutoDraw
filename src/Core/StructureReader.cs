@@ -21,16 +21,43 @@ namespace AutoDraw.Core
 
         public StructureReader(Action<string> progress) { _progress = progress; }
 
-        public void Read(AssemblyDocument main)
+        public void Read(AssemblyDocument main) => Read(new List<AssemblyDocument> { main });
+
+        /// <summary>
+        /// One assembly: it is the root. Several: a root without a document (no sheet) with each assembly under it, as
+        /// if they were sub-assemblies of one main assembly; an assembly that is also inside another one is read once.
+        /// </summary>
+        public void Read(IList<AssemblyDocument> assemblies)
         {
-            Root = NewNode((Document)main);
-            Root.IsMain = true;
-            Root.Quantity = 1;
             ContentGroup = new DocNode { IsGroup = true, Name = "Content Center", Checked = false, Expanded = false };
+            if (assemblies.Count == 1)
+            {
+                Root = NewNode((Document)assemblies[0]);
+                Root.IsMain = true;
+                Root.Quantity = 1;
+                Walk(assemblies[0].ComponentDefinition, Root, 1, RowsOf(Root));
+            }
+            else
+            {
+                Root = new DocNode
+                {
+                    IsMain = true, IsVirtual = true, IsAssembly = true, Quantity = 1, Checked = false,
+                    Name = Naming.GroupName(assemblies.Select(a => System.IO.Path.GetFileNameWithoutExtension(((Document)a).FullFileName ?? "?")).ToList())
+                };
+                foreach (AssemblyDocument asm in assemblies)
+                {
+                    string key = ((Document)asm).FullDocumentName ?? "";
+                    if (_nodes.TryGetValue(key, out DocNode seen)) { if (seen.Parent == Root) seen.Quantity++; continue; }
+                    DocNode node = NewNode((Document)asm);
+                    node.Parent = Root;
+                    Root.Children.Add(node);
+                    node.Quantity = 1;
+                    Root.OwnRows = Root.Children.Count;
+                    Walk(asm.ComponentDefinition, node, 1, RowsOf(node));
+                }
+            }
 
-            Walk(main.ComponentDefinition, Root, 1, RowsOf(Root));
-
-            foreach (DocNode n in _nodes.Values.Where(n => !n.IsMain))
+            foreach (DocNode n in _nodes.Values.Where(n => n != Root))
             {
                 n.Checked = !n.IsContentCenter;
                 n.Expanded = true;

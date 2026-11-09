@@ -27,7 +27,8 @@ namespace AutoDraw.UI
         private readonly AppSettings _settings = AppSettings.Load();
         private readonly Theme _theme;
 
-        private AssemblyDocument _main;
+        /// <summary>The assemblies of the drawing: one main assembly, or several separate ones.</summary>
+        private List<AssemblyDocument> _asms = new List<AssemblyDocument>();
         /// <summary>The drawing the window was opened from (it then updates that drawing), or null.</summary>
         private DrawingDocument _drawing;
         private StructureReader _reader;
@@ -46,7 +47,7 @@ namespace AutoDraw.UI
         private readonly PictureBox _thumb = new PictureBox();
         private readonly Label _info = new Label();
         private readonly Label _status = new Label();
-        private readonly InventorButton _generate, _close, _reload, _browse, _columns, _numbering;
+        private readonly InventorButton _generate, _close, _reload, _browse, _columns, _numbering, _assemblies;
         private ApplicationEvents _appEvents;
         private bool _busy, _cancel;
 
@@ -61,27 +62,46 @@ namespace AutoDraw.UI
             Document active = app.ActiveDocument;
             var dwg = active as DrawingDocument;
             var asm = active as AssemblyDocument;
+            List<AssemblyDocument> asms;
             if (dwg != null)
             {
                 if (string.IsNullOrEmpty(active.FullFileName)) return "Save the drawing first.";
-                asm = SheetMap.FindAssembly(dwg);
-                if (asm == null) return "This drawing shows no assembly.";
+                asms = SheetMap.FindAssemblies(app, dwg);
+                if (asms.Count == 0) return "This drawing shows no assembly.";
             }
             else if (asm == null) return "Open an assembly, or a drawing made by AutoDraw.";
             else if (string.IsNullOrEmpty(active.FullFileName)) return "Save the assembly first.";
+            else asms = new List<AssemblyDocument> { asm };
 
-            if (_active != null && !_active.IsDisposed)
+            MainWindow w = _active;
+            if (w != null && !w.IsDisposed)
             {
-                if (_active._busy) { _active.Activate(); return null; }
-                if (_active._main != asm || _active._drawing != dwg) _active.LoadAssembly(asm, dwg);
-                if (_active.WindowState == FormWindowState.Minimized) _active.WindowState = FormWindowState.Normal;
-                _active.Activate();
+                if (w._busy) { w.Activate(); return null; }
+                if (w.WindowState == FormWindowState.Minimized) w.WindowState = FormWindowState.Normal;
+                if (dwg != null) { if (w._drawing != dwg) w.LoadAssemblies(asms, dwg); }
+                else if (w._drawing != null || !w._asms.Contains(asm))
+                {
+                    bool add = false;
+                    if (w._drawing == null && w._asms.Count > 0)
+                    {
+                        w.Activate();
+                        DialogResult r = MessageBox.Show(w,
+                            "Add " + DocName(asm) + " to the drawing of " + (w._reader?.Root.Name ?? "") + "?" + Environment.NewLine + Environment.NewLine +
+                            "Yes: one drawing of several assemblies. No: start again with " + DocName(asm) + " only.",
+                            "AutoDraw", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                        if (r == DialogResult.Cancel) return null;
+                        add = r == DialogResult.Yes;
+                    }
+                    if (add) w.ChangeAssemblies(w._asms.Concat(new[] { asm }).ToList());
+                    else w.LoadAssemblies(asms, null);
+                }
+                w.Activate();
                 return null;
             }
-            var w = new MainWindow(app);
+            w = new MainWindow(app);
             _active = w;
             w.Show(new InventorWindow(app.MainFrameHWND));
-            w.LoadAssembly(asm, dwg);
+            w.LoadAssemblies(asms, dwg);
             return null;
         }
 
@@ -112,6 +132,7 @@ namespace AutoDraw.UI
             _browse = new InventorButton(_theme, "…", false) { Size = new Size(30, 22), Dock = DockStyle.Right };
             _columns = new InventorButton(_theme, "Columns…", false) { Size = new Size(80, 26) };
             _numbering = new InventorButton(_theme, "Numbering…", false) { Size = new Size(96, 26) };
+            _assemblies = new InventorButton(_theme, "Assemblies…", false) { Size = new Size(96, 26) };
 
             _grid = new TreeGrid(_theme) { Dock = DockStyle.Fill };
             _grid.LargeLimit = () => _settings.LargeAssemblyRows;
@@ -146,7 +167,8 @@ namespace AutoDraw.UI
             _up.SetItems(new[] { "Z up (models standing on XY)", "Y up (Inventor default)" }, _settings.ZUp ? "Z up (models standing on XY)" : "Y up (Inventor default)", null);
             _up.SelectedIndexChanged += (s, e) => { _settings.UpAxis = (_up.Value ?? "").StartsWith("Y") ? "Y" : "Z"; _settings.Save(); };
             _browse.Click += (s, e) => BrowseTemplate();
-            _reload.Click += (s, e) => { if (!_busy && _main != null) LoadAssembly(_main, _drawing); };
+            _reload.Click += (s, e) => { if (!_busy && _asms.Count > 0) LoadAssemblies(_asms, _drawing); };
+            _assemblies.Click += (s, e) => AssembliesMenu();
             _columns.Click += (s, e) => ColumnsMenu();
             _numbering.Click += (s, e) => Numbering();
             _generate.Click += (s, e) => { if (_busy) { _cancel = true; _generate.Text = "Stopping…"; } else if (_drawing != null) UpdateDrawing(); else Generate(); };
@@ -199,10 +221,11 @@ namespace AutoDraw.UI
             _rules.Size = new Size(w, 22);
             stack.Controls.Add(_rules);
 
-            var buttons = new FlowLayoutPanel { Size = new Size(w, 34), BackColor = _theme.Back, Margin = new Padding(0, 14, 0, 0) };
+            var buttons = new FlowLayoutPanel { Size = new Size(w, 66), BackColor = _theme.Back, Margin = new Padding(0, 14, 0, 0) };
             buttons.Controls.Add(_reload);
             buttons.Controls.Add(_columns);
             buttons.Controls.Add(_numbering);
+            buttons.Controls.Add(_assemblies);
             stack.Controls.Add(buttons);
 
             _thumb.Size = new Size(w, 190); _thumb.SizeMode = PictureBoxSizeMode.Zoom; _thumb.BackColor = _theme.Field;
@@ -212,8 +235,8 @@ namespace AutoDraw.UI
             stack.Controls.Add(_info);
 
             var help = Caption("Tick the documents that get a sheet. Change the type, Aantal, sheet count or an iProperty in the grid; " +
-                "they are written to the files when the drawing is made.", w);
-            help.Size = new Size(w, 70);
+                "they are written to the files when the drawing is made. Assemblies… puts several separate assemblies in one drawing.", w);
+            help.Size = new Size(w, 86);
             stack.Controls.Add(help);
             return left;
         }
@@ -240,9 +263,16 @@ namespace AutoDraw.UI
 
         // ----- loading ----------------------------------------------------------------------------------------------------
 
-        private void LoadAssembly(AssemblyDocument asm, DrawingDocument drawing)
+        private static string DocName(AssemblyDocument a) => Path.GetFileNameWithoutExtension(((Document)a).FullFileName ?? "?");
+
+        /// <summary>
+        /// Reads the assemblies into the tree. <paramref name="previous"/> (the tree before the list of assemblies
+        /// changed) keeps the ticks, types and typed values of the documents that were there already.
+        /// </summary>
+        private void LoadAssemblies(List<AssemblyDocument> asms, DrawingDocument drawing, Dictionary<string, DocNode> previous = null)
         {
-            _main = asm;
+            string typedOrder = _order.Text;
+            _asms = asms.ToList();
             _drawing = drawing;
             _grid.DrawingMode = drawing != null;
             _grid.BuildColumns(_settings.ExtraColumns);
@@ -253,18 +283,21 @@ namespace AutoDraw.UI
             try
             {
                 _reader = new StructureReader(s => { SetStatus(s, false); Application.DoEvents(); });
-                _reader.Read(asm);
+                _reader.Read(_asms);
                 _all = new List<DocNode> { _reader.Root };
-                _all.AddRange(_reader.AllDocs.Where(n => !n.IsMain));
+                _all.AddRange(_reader.AllDocs.Where(n => n != _reader.Root));
                 _title.Text = _reader.Root.Name;
                 Text = "AutoDraw – " + (drawing != null ? Path.GetFileName(((Document)drawing).FullFileName) : _reader.Root.Name);
-                _order.Text = Props.Get((Document)asm, _settings.OrderProperty);
-                ReadPartNumbers();
+                _order.Text = previous != null && typedOrder.Trim().Length > 0 ? typedOrder
+                    : _asms.Select(a => Props.Get((Document)a, _settings.OrderProperty)).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? "";
                 string drawingText = drawing != null ? ApplyDrawing(false) : null;
+                if (previous != null) Restore(previous, drawing != null);
+                ReadPartNumbers();
                 SheetPlan.Number(_all, _settings.LargeAssemblyRows);
                 _grid.SetRoot(_reader.Root);
-                int parts = _all.Count(n => !n.IsAssembly), asms = _all.Count(n => n.IsAssembly);
-                SetStatus(drawingText ?? asms + " assemblies, " + parts + " parts (" + _all.Count(n => n.IsContentCenter) + " Content Center). " + CheckOrder(), false);
+                int parts = _all.Count(n => !n.IsAssembly), subs = _all.Count(n => n.IsAssembly && !n.IsVirtual);
+                SetStatus(drawingText ?? (_asms.Count > 1 ? _asms.Count + " separate assemblies; " : "") +
+                    subs + " assemblies, " + parts + " parts (" + _all.Count(n => n.IsContentCenter) + " Content Center). " + CheckOrder(), false);
             }
             catch (Exception ex)
             {
@@ -272,6 +305,101 @@ namespace AutoDraw.UI
                 SetStatus("Reading the assembly failed: " + ex.Message, true);
             }
             finally { Cursor = Cursors.Default; }
+        }
+
+        private Dictionary<string, DocNode> Snapshot()
+        {
+            var map = new Dictionary<string, DocNode>(StringComparer.OrdinalIgnoreCase);
+            foreach (DocNode n in _all.Where(n => !n.IsGroup && !n.IsVirtual && n.Key.Length > 0)) if (!map.ContainsKey(n.Key)) map[n.Key] = n;
+            return map;
+        }
+
+        /// <summary>Gives the documents their ticks, types and typed values back; new documents are ticked.</summary>
+        private void Restore(Dictionary<string, DocNode> previous, bool drawingMode)
+        {
+            foreach (DocNode n in _all.Where(n => !n.IsGroup && !n.IsVirtual))
+            {
+                if (previous.TryGetValue(n.Key, out DocNode p))
+                {
+                    n.Checked = p.Checked;
+                    n.KindOverride = p.KindOverride;
+                    n.QuantityText = p.QuantityText;
+                    n.SheetsOverride = p.SheetsOverride;
+                    n.Redo = p.Redo;
+                    n.Expanded = p.Expanded;
+                    foreach (KeyValuePair<string, string> kv in p.Edited) n.Edited[kv.Key] = kv.Value;
+                }
+                else if (drawingMode && !n.IsContentCenter) n.Checked = true;
+            }
+        }
+
+        /// <summary>Reads the tree again for another list of assemblies, keeping what was set for the documents.</summary>
+        private void ChangeAssemblies(List<AssemblyDocument> asms)
+        {
+            if (_busy || asms.Count == 0 || asms.SequenceEqual(_asms)) return;
+            _grid.EndEdit();
+            LoadAssemblies(asms, _drawing, Snapshot());
+        }
+
+        /// <summary>The assemblies in the drawing (click one to take it out), the other open assemblies, and Add from file.</summary>
+        private void AssembliesMenu()
+        {
+            if (_busy) return;
+            var menu = new ThemedMenu(_theme) { ShowCheckMargin = true };
+            foreach (AssemblyDocument a in _asms)
+            {
+                AssemblyDocument asm = a;
+                var item = new ToolStripMenuItem(DocName(asm)) { Checked = true, Enabled = _asms.Count > 1, ToolTipText = "Click to take it out of the drawing" };
+                item.Click += (s, e) => ChangeAssemblies(_asms.Where(x => x != asm).ToList());
+                menu.Items.Add(item);
+            }
+            menu.Items.Add(new ToolStripSeparator());
+
+            var inTree = new HashSet<string>(_all.Select(n => n.Key), StringComparer.OrdinalIgnoreCase);
+            var open = new List<AssemblyDocument>();
+            try
+            {
+                foreach (Document d in _app.Documents.VisibleDocuments)
+                    if (d is AssemblyDocument o && !string.IsNullOrEmpty(d.FullFileName) && !inTree.Contains(d.FullDocumentName ?? "") && !open.Contains(o)) open.Add(o);
+            }
+            catch (Exception ex) { Log.Write("Listing the open assemblies failed: " + ex.Message); }
+            foreach (AssemblyDocument o in open.Take(20))
+            {
+                AssemblyDocument asm = o;
+                var item = new ToolStripMenuItem("Add " + DocName(asm));
+                item.Click += (s, e) => ChangeAssemblies(_asms.Concat(new[] { asm }).ToList());
+                menu.Items.Add(item);
+            }
+            var file = new ToolStripMenuItem("Add from file…");
+            file.Click += (s, e) => AddFromFile();
+            menu.Items.Add(file);
+            menu.Show(_assemblies, new Point(0, _assemblies.Height));
+        }
+
+        private void AddFromFile()
+        {
+            using (var dlg = new OpenFileDialog { Title = "Add assemblies", Filter = "Inventor assembly (*.iam)|*.iam", Multiselect = true })
+            {
+                try { if (_asms.Count > 0) dlg.InitialDirectory = Path.GetDirectoryName(((Document)_asms[0]).FullFileName); } catch { }
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                var list = _asms.ToList();
+                Cursor = Cursors.WaitCursor;
+                try
+                {
+                    foreach (string f in dlg.FileNames)
+                    {
+                        SetStatus("Opening " + Path.GetFileName(f) + "…", false);
+                        Application.DoEvents();
+                        try
+                        {
+                            if (_app.Documents.Open(f, false) is AssemblyDocument a && !list.Contains(a)) list.Add(a);
+                        }
+                        catch (Exception ex) { Log.Write("Opening " + f + " failed: " + ex.Message); SetStatus("Could not open " + Path.GetFileName(f) + ": " + ex.Message, true); return; }
+                    }
+                }
+                finally { Cursor = Cursors.Default; }
+                ChangeAssemblies(list);
+            }
         }
 
         /// <summary>
@@ -282,7 +410,7 @@ namespace AutoDraw.UI
         {
             List<SheetOwner> owners = SheetMap.Read(_drawing);
             Dictionary<string, int> counts = SheetMap.Counts(owners);
-            foreach (DocNode n in _all.Where(n => !n.IsGroup))
+            foreach (DocNode n in _all.Where(n => !n.IsGroup && !n.IsVirtual))
             {
                 counts.TryGetValue(n.Key, out int c);
                 n.SheetsInDrawing = c;
@@ -300,7 +428,7 @@ namespace AutoDraw.UI
             if (_reader?.ContentGroup != null) _reader.ContentGroup.Expanded = _reader.ContentGroup.Children.Any(c => c.Checked);
             var keys = new HashSet<string>(_all.Select(n => n.Key), StringComparer.OrdinalIgnoreCase);
             int foreign = owners.Count(o => o.Key != null && !keys.Contains(o.Key));
-            int missing = _all.Count(n => !n.IsGroup && !n.IsContentCenter && n.SheetsInDrawing == 0);
+            int missing = _all.Count(n => !n.IsGroup && !n.IsVirtual && !n.IsContentCenter && n.SheetsInDrawing == 0);
             return "Drawing with " + owners.Count + " sheets." +
                 (missing > 0 ? " " + missing + " document(s) have no sheet yet: tick them to add one." : "") +
                 (foreign > 0 ? " " + foreign + " sheet(s) show documents that are no longer in the assembly." : "") +
@@ -436,7 +564,7 @@ namespace AutoDraw.UI
 
         private void Generate()
         {
-            if (_main == null || _reader == null) return;
+            if (_asms.Count == 0 || _reader == null) return;
             _grid.EndEdit();
             string problem = Naming.OrderProblem(_order.Text, _settings);
             if (problem != null) { SetStatus(problem, true); _order.FocusField(); return; }
@@ -448,7 +576,7 @@ namespace AutoDraw.UI
 
             string path = null;
             DrawingBuilder builder = RunBuilder(jobs.Count, "Generating", (b, status, cancelled) =>
-                path = b.Run(_main, _reader.Root, jobs, _all, _order.Text, status, cancelled));
+                path = b.Run(_asms, _reader.Root, jobs, _all, _order.Text, status, cancelled));
             if (builder == null) return;
             if (path == null)
             {
@@ -464,7 +592,7 @@ namespace AutoDraw.UI
         /// </summary>
         private void UpdateDrawing()
         {
-            if (_main == null || _reader == null || _drawing == null) return;
+            if (_asms.Count == 0 || _reader == null || _drawing == null) return;
             _grid.EndEdit();
             string problem = Naming.OrderProblem(_order.Text, _settings);
             if (problem != null) { SetStatus(problem, true); _order.FocusField(); return; }
@@ -493,7 +621,7 @@ namespace AutoDraw.UI
             bool ran = false;
             DrawingBuilder builder = RunBuilder(Math.Max(1, toMake), "Updating", (b, status, cancelled) =>
             {
-                b.Update(_drawing, _main, jobs, _all, _order.Text, deleteOthers, status, cancelled);
+                b.Update(_drawing, _asms, jobs, _all, _order.Text, deleteOthers, status, cancelled);
                 ran = true;
             });
             if (builder == null) return;
@@ -511,7 +639,7 @@ namespace AutoDraw.UI
             _cancel = false;
             _grid.Enabled = false;
             _generate.Text = "Cancel";
-            _close.Enabled = _reload.Enabled = _numbering.Enabled = false;
+            _close.Enabled = _reload.Enabled = _numbering.Enabled = _assemblies.Enabled = false;
             var builder = new DrawingBuilder(_app, _settings);
             ProgressPanel progress = _progress;
             progress.Begin(total);
@@ -544,7 +672,7 @@ namespace AutoDraw.UI
                 _busy = false;
                 _grid.Enabled = true;
                 _generate.Text = _drawing != null ? "Update drawing" : "Generate drawing";
-                _close.Enabled = _reload.Enabled = _numbering.Enabled = true;
+                _close.Enabled = _reload.Enabled = _numbering.Enabled = _assemblies.Enabled = true;
                 try { _app.StatusBarText = ""; } catch { }
                 progress.End();
                 _grid.RefreshValues();
@@ -568,7 +696,7 @@ namespace AutoDraw.UI
             handling = HandlingCodeEnum.kEventNotHandled;
             try
             {
-                if (timing == EventTimingEnum.kBefore && _main != null && !_busy && (ReferenceEquals(doc, _main) || (_drawing != null && ReferenceEquals(doc, _drawing)))) BeginInvoke((Action)Close);
+                if (timing == EventTimingEnum.kBefore && !_busy && (_asms.Any(a => ReferenceEquals(doc, a)) || (_drawing != null && ReferenceEquals(doc, _drawing)))) BeginInvoke((Action)Close);
             }
             catch { }
         }

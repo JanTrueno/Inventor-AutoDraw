@@ -20,7 +20,7 @@ namespace AutoDraw.Core
     {
         public static List<SheetJob> Make(IEnumerable<DocNode> nodes, int largeLimit)
         {
-            List<DocNode> ticked = nodes.Where(n => n.Checked && !n.IsGroup).ToList();
+            List<DocNode> ticked = nodes.Where(n => n.Checked && !n.IsGroup && !n.IsVirtual).ToList();
             var ordered = ticked
                 .OrderBy(n => n.IsMain ? 0 : 1)
                 .ThenBy(n => (int)n.Kind)
