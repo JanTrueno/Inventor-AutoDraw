@@ -329,8 +329,16 @@ namespace AutoDraw.Drawing
             List<Curve> outer = lines.Where(k => !inner.Contains(k)).OrderByDescending(Len).Take(max).ToList();
             double reach = Math.Max(1.5, diag * 0.1);
 
+            // a straight leg as long as the whole view is wide or high already has its overall dimension
+            List<Curve> outline = Read(view).Where(IsOutline).ToList();
+            double spanX = outline.Count > 0 ? outline.Max(k => k.MaxX) - outline.Min(k => k.MinX) : 0;
+            double spanY = outline.Count > 0 ? outline.Max(k => k.MaxY) - outline.Min(k => k.MinY) : 0;
+
             foreach (Curve o in outer)
             {
+                bool flat = Math.Abs(o.SY - o.EY) < 1e-4, upright = Math.Abs(o.SX - o.EX) < 1e-4;
+                double reachEnds = Len(o) + 2 * Math.Max(0.1, diag * 0.02);   // up to the virtual sharps (bend radius)
+                if ((flat && spanX <= reachEnds && spanX >= Len(o) - 0.05) || (upright && spanY <= reachEnds && spanY >= Len(o) - 0.05)) continue;
                 GeometryIntent a = End(o, true, outer, reach), b = End(o, false, outer, reach);
                 // outside: from the middle of the edge, away from the middle of the profile
                 double mx = (o.SX + o.EX) / 2, my = (o.SY + o.EY) / 2, l = Len(o);

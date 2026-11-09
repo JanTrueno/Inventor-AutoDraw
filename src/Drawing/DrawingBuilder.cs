@@ -382,9 +382,7 @@ namespace AutoDraw.Drawing
             Detail("Dimensioning…");
             var d = new Dimensioner(_app, sheet);
             DrawingView[] folded = new[] { v.Base, v.Below, v.Side }.Where(x => x != null).ToArray();
-            var arcs = folded.ToDictionary(x => x, Dimensioner.ArcCount);
-            var profiles = new HashSet<DrawingView>(folded.Where(x => x != v.Base && arcs[x] > 0));
-            if (profiles.Count == 0) profiles.Add(folded.OrderByDescending(x => arcs[x]).First());
+            var profiles = ProfileViews(doc, v);
             d.Overall(v.Base, true, true, profiles.Contains(v.Base) ? 1 : 0);
             if (v.Below != null) d.Overall(v.Below, false, true, profiles.Contains(v.Below) ? 1 : 0);
             if (v.Side != null) d.Overall(v.Side, true, false, profiles.Contains(v.Side) ? 1 : 0);
@@ -457,6 +455,7 @@ namespace AutoDraw.Drawing
         {
             public DrawingView Base, Below, Side;
             public bool TopAbove = true;   // the top view (Below) sits above the base view
+            public double[] BaseEye, TopEye, SideEye;   // where each view looks from (model directions)
             public static Views Of(DrawingView single) => new Views { Base = single };
         }
 
@@ -668,7 +667,11 @@ namespace AutoDraw.Drawing
             double[] e = o.Dir.Eye, u = o.Dir.Up;
             if (o.Rotate) u = Cross(u, e);
 
-            var v = new Views { TopAbove = !FirstAngle(sheet) };
+            bool first = FirstAngle(sheet);
+            double[] r = Cross(u, e);   // screen right of the base view
+            // the top view looks from above; the side view projected to the left is the left view (third angle) or
+            // the right view (first angle)
+            var v = new Views { TopAbove = !first, BaseEye = e, TopEye = u, SideEye = first ? r : Neg(r) };
             v.Base = AddView(sheet, doc, P(cx, cy), s, new ViewDir { Eye = e, Up = u });
             Tidy(v.Base);
             // projected (linked) views: the top view (third angle: projected upwards; first angle: downwards) and the
@@ -699,6 +702,34 @@ namespace AutoDraw.Drawing
         {
             try { return ((DrawingDocument)sheet.Parent).StylesManager.ActiveStandardStyle.FirstAngleProjection; }
             catch { return false; }
+        }
+
+        /// <summary>
+        /// The folded views that look along the bend axes (the bends show as arcs, the legs as lines): only those get
+        /// leg lengths and square angles. A top view that merely shows slots and rounded corners is not one.
+        /// </summary>
+        private static HashSet<DrawingView> ProfileViews(Document doc, Views v)
+        {
+            var axes = new List<double[]>();
+            try
+            {
+                if (doc is PartDocument p && p.ComponentDefinition is SheetMetalComponentDefinition sm)
+                    foreach (Bend b in sm.Bends)
+                        foreach (Face f in b.FrontFaces)
+                            if (f.Geometry is Cylinder c) { axes.Add(new[] { c.AxisVector.X, c.AxisVector.Y, c.AxisVector.Z }); break; }
+            }
+            catch (Exception ex) { Log.Write("Reading the bend axes failed: " + ex.Message); }
+
+            var profiles = new HashSet<DrawingView>();
+            if (axes.Count == 0) return profiles;
+            foreach ((DrawingView view, double[] eye) in new[] { (v.Base, v.BaseEye), (v.Below, v.TopEye), (v.Side, v.SideEye) })
+            {
+                if (view == null || eye == null) continue;
+                double n = Math.Sqrt(eye[0] * eye[0] + eye[1] * eye[1] + eye[2] * eye[2]);
+                int along = axes.Count(a => Math.Abs(a[0] * eye[0] + a[1] * eye[1] + a[2] * eye[2]) / n > 0.99);
+                if (along > 0 && along * 2 >= axes.Count) profiles.Add(view);
+            }
+            return profiles;
         }
 
         private static double[] Cross(double[] a, double[] b) =>
