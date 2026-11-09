@@ -46,10 +46,25 @@ alphabetical within each type. Content Center parts are in a closed, unticked gr
 
 Scales are standard scales picked to fit; the sheet size comes from the template.
 
-## Build / install
+## Install
+
+Run `AutoDraw-Setup-<version>.exe` (built into `dist\` by `build-installer.ps1`, needs Inno Setup 6). It installs for the
+current user into `%APPDATA%\Autodesk\ApplicationPlugins\AutoDraw.bundle`; close Inventor first.
+
+For development:
 
 ```
-powershell -ExecutionPolicy Bypass -File install.ps1
+powershell -ExecutionPolicy Bypass -File install.ps1            # build and install for this user
+powershell -ExecutionPolicy Bypass -File build-installer.ps1    # build dist\AutoDraw-Setup-<version>.exe
+dotnet run --project tests\CoreTests.csproj -c Release           # sheet order, naming, scales and layout tests
 ```
 
-Close Inventor first when updating. Settings: `%APPDATA%\AutoDraw\settings.json`; log: `%LOCALAPPDATA%\AutoDraw\log.txt`.
+`tools\make-artwork.ps1` redraws the logo, icon and wizard images; `tools\Probe` opens a drawing in Inventor (a hidden
+instance when none runs) to inspect its views and test dimensions, without saving.
+
+Settings: `%APPDATA%\AutoDraw\settings.json`; log: `%LOCALAPPDATA%\AutoDraw\log.txt`.
+
+## License
+
+GPL-3.0, see [LICENSE](LICENSE). The caret icons are from Autodesk's Weave design system (Apache-2.0), see
+[THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
