@@ -170,6 +170,13 @@ namespace AutoDraw.UI
             Invalidate();
         }
 
+        /// <summary>Reads the iProperty columns from the files again (after they were written elsewhere).</summary>
+        public void ForgetValues()
+        {
+            _propCache.Clear();
+            RefreshValues();
+        }
+
         private string PropValue(DocNode n, string name)
         {
             if (n.Edited.TryGetValue(name, out string v)) return v;

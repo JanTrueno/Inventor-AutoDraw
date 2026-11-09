@@ -140,6 +140,57 @@ internal static class CoreTests
         Check("assembly top view rises beside the header", asmG.Box.Y1 > 33 && asmG.Box.Y0 < 4, B(asmG.Box) + " 1:" + (1 / asmG.Scale).ToString("0.#"));
         Check("assembly views clear of the header", asmG.Parts().All(q => !q.R.Overlaps(obstacles[3])));
 
+        // bulk part numbers: 1777.<asm>.<seq>-<type>
+        DocNode T(string name, DocKind kind, params DocNode[] kids)
+        {
+            DocNode n = Node(name, kind);
+            foreach (DocNode k in kids) { k.Parent = n; n.Children.Add(k); }
+            return n;
+        }
+        DocNode tree = T("main", DocKind.Assembly,
+            T("frame", DocKind.Assembly,
+                T("door", DocKind.Assembly,
+                    T("lock", DocKind.Assembly, T("pin", DocKind.Lathe), T("deep", DocKind.Assembly, T("x", DocKind.General))),
+                    T("panel", DocKind.SheetMetalFolded)),
+                T("bracket", DocKind.SheetMetalFolded), T("plate", DocKind.SheetMetalFlat)),
+            T("conveyor", DocKind.Assembly, T("shaft", DocKind.Lathe)),
+            T("loose", DocKind.SheetMetalFolded),
+            new DocNode { Name = "bolt", IsContentCenter = true });
+        tree.IsMain = true;
+        var ns = new AppSettings();
+        var cur = new Dictionary<string, string>();
+        var warn = new List<string>();
+        Dictionary<string, string> Numbers(Func<DocNode, bool> inc = null)
+        {
+            warn.Clear();
+            return PartNumbering.Plan(tree, "160261777", ns, n => cur.TryGetValue(n.Name, out string v) ? v : "", inc, warn)
+                .ToDictionary(r => r.Node.Name, r => r.Value);
+        }
+        var num = Numbers();
+        string all = string.Join(" ", num.Select(kv => kv.Key + "=" + kv.Value));
+        Check("main assembly 000.000", num["main"] == "1777.000.000-S", all);
+        Check("part in the main assembly", num["loose"] == "1777.000.001-Z", all);
+        Check("sub-assemblies in hundreds", num["frame"] == "1777.100.000-S" && num["conveyor"] == "1777.200.000-S", all);
+        Check("parts numbered in their assembly", num["bracket"] == "1777.100.001-Z" && num["plate"] == "1777.100.002-P" && num["shaft"] == "1777.200.001-D", all);
+        Check("sub-sub in tens, next level in ones", num["door"] == "1777.110.000-S" && num["lock"] == "1777.111.000-S" && num["panel"] == "1777.110.001-Z", all);
+        Check("fourth level numbered in the third", num["pin"] == "1777.111.001-D" && num["deep"] == "1777.111.002-S" && num["x"] == "1777.111.003-G" && warn.Count == 1, all + " | " + string.Join("; ", warn));
+        Check("Content Center left out", !num.ContainsKey("bolt"));
+        Check("no duplicates", num.Values.Distinct().Count() == num.Count);
+
+        cur["conveyor"] = "1777.300.000-S"; cur["shaft"] = "1777.300.007-X"; cur["bracket"] = "1777.100.002-Z"; cur["frame"] = "9999.100.000-S";
+        num = Numbers();
+        all = string.Join(" ", num.Select(kv => kv.Key + "=" + kv.Value));
+        Check("kept assembly code", num["conveyor"] == "1777.300.000-S", all);
+        Check("kept sequence, type letter corrected", num["shaft"] == "1777.300.007-D", all);
+        Check("kept part, new part takes the free number", num["bracket"] == "1777.100.002-Z" && num["plate"] == "1777.100.001-P", all);
+        ns.NumberKeepExisting = false;
+        Check("renumber all", Numbers()["conveyor"] == "1777.200.000-S");
+        num = Numbers(n => n.Name != "loose" && n.Name != "frame");
+        Check("excluded documents get no row, the rest keep their place", !num.ContainsKey("loose") && !num.ContainsKey("frame") && num["bracket"] == "1777.100.001-Z", string.Join(" ", num.Select(kv => kv.Key + "=" + kv.Value)));
+        ns.NumberPattern = "{order}-{asm}-{seq}{type}"; ns.NumberOrderDigits = 0;
+        ns.TypeLetters["Lathe"] = "L";
+        Check("pattern, all digits and letters configurable", Numbers()["shaft"] == "160261777-200-001L");
+
         Console.WriteLine(_failed == 0 ? "All passed." : _failed + " failed.");
         return _failed == 0 ? 0 : 1;
     }

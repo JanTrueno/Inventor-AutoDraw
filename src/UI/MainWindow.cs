@@ -43,7 +43,7 @@ namespace AutoDraw.UI
         private readonly PictureBox _thumb = new PictureBox();
         private readonly Label _info = new Label();
         private readonly Label _status = new Label();
-        private readonly InventorButton _generate, _close, _reload, _browse, _columns;
+        private readonly InventorButton _generate, _close, _reload, _browse, _columns, _numbering;
         private ApplicationEvents _appEvents;
         private bool _busy, _cancel;
 
@@ -91,9 +91,10 @@ namespace AutoDraw.UI
             _up = new ThemedCombo(_theme);
             _generate = new InventorButton(_theme, "Generate drawing", true) { Size = new Size(140, 28) };
             _close = new InventorButton(_theme, "Close", false) { Size = new Size(90, 28) };
-            _reload = new InventorButton(_theme, "Reload", false) { Size = new Size(90, 26) };
+            _reload = new InventorButton(_theme, "Reload", false) { Size = new Size(80, 26) };
             _browse = new InventorButton(_theme, "…", false) { Size = new Size(30, 22), Dock = DockStyle.Right };
-            _columns = new InventorButton(_theme, "Columns…", false) { Size = new Size(90, 26) };
+            _columns = new InventorButton(_theme, "Columns…", false) { Size = new Size(80, 26) };
+            _numbering = new InventorButton(_theme, "Numbering…", false) { Size = new Size(96, 26) };
 
             _grid = new TreeGrid(_theme) { Dock = DockStyle.Fill };
             _grid.LargeLimit = () => _settings.LargeAssemblyRows;
@@ -128,6 +129,7 @@ namespace AutoDraw.UI
             _browse.Click += (s, e) => BrowseTemplate();
             _reload.Click += (s, e) => { if (!_busy && _main != null) LoadAssembly(_main); };
             _columns.Click += (s, e) => ColumnsMenu();
+            _numbering.Click += (s, e) => Numbering();
             _generate.Click += (s, e) => { if (_busy) { _cancel = true; _generate.Text = "Stopping…"; } else Generate(); };
             _close.Click += (s, e) => Close();
 
@@ -177,6 +179,7 @@ namespace AutoDraw.UI
             var buttons = new FlowLayoutPanel { Size = new Size(w, 34), BackColor = _theme.Back, Margin = new Padding(0, 14, 0, 0) };
             buttons.Controls.Add(_reload);
             buttons.Controls.Add(_columns);
+            buttons.Controls.Add(_numbering);
             stack.Controls.Add(buttons);
 
             _thumb.Size = new Size(w, 190); _thumb.SizeMode = PictureBoxSizeMode.Zoom; _thumb.BackColor = _theme.Field;
@@ -324,6 +327,21 @@ namespace AutoDraw.UI
             menu.Show(_columns, new Point(0, _columns.Height));
         }
 
+        private void Numbering()
+        {
+            if (_busy || _reader == null) return;
+            _grid.EndEdit();
+            using (var w = new NumberingWindow(_app, _theme, _settings, _reader.Root, _order.Text))
+            {
+                w.ShowDialog(this);
+                if (!w.Applied) return;
+            }
+            _grid.ForgetValues();
+            if (_settings.NumberProperties.Count > 0 && !_settings.ExtraColumns.Contains(_settings.NumberProperties[0], StringComparer.OrdinalIgnoreCase))
+                SetStatus("Part numbers written to " + string.Join(", ", _settings.NumberProperties) + ".", false);
+            else SetStatus("Part numbers written.", false);
+        }
+
         // ----- generating -------------------------------------------------------------------------------------------------
 
         private void Generate()
@@ -342,7 +360,7 @@ namespace AutoDraw.UI
             _cancel = false;
             _grid.Enabled = false;
             _generate.Text = "Cancel";
-            _close.Enabled = _reload.Enabled = false;
+            _close.Enabled = _reload.Enabled = _numbering.Enabled = false;
             var builder = new DrawingBuilder(_app, _settings);
             ProgressPanel progress = _progress;
             progress.Begin(jobs.Count);
@@ -374,7 +392,7 @@ namespace AutoDraw.UI
                 _busy = false;
                 _grid.Enabled = true;
                 _generate.Text = "Generate drawing";
-                _close.Enabled = _reload.Enabled = true;
+                _close.Enabled = _reload.Enabled = _numbering.Enabled = true;
                 try { _app.StatusBarText = ""; } catch { }
                 progress.End();
                 _grid.RefreshValues();

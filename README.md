@@ -20,6 +20,33 @@ part type, parts lists with balloons, overall dimensions and, on flat patterns, 
 - `ordernummer` on the main assembly, and every edited iProperty column.
 - Sheet names are the document names; sheet metal parts without a flat pattern get one.
 
+## Part numbers (Numbering…)
+
+Gives every document in the tree a number and writes it to the chosen iProperties (default **Part Number**; any
+built-in or custom iProperty, several separated by `;`). The window shows the current and the new number of each
+document before **Apply** writes and saves them.
+
+Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
+
+```
+1777.000.000-S   main assembly
+1777.000.001-Z   folded part directly in the main assembly
+1777.100.000-S   sub-assembly            (100 … 900)
+1777.100.001-P   flat part in it
+1777.110.000-S   sub-sub-assembly        (110 … 190)
+1777.111.000-S   next level              (111 … 119)
+1777.111.001-D   lathe part in it
+```
+
+- `{order}` – the last digits of the order number (4 by default, 0 = all), `{asm}` – assembly code, `{seq}` – 000 for
+  the assembly itself, then 001, 002 … in tree order, `{type}` – type letter, `{name}` – file name.
+- Type letters (configurable): S assembly, Z folded, P flat, D lathe, B tube, G general.
+- Deeper assemblies, or a tenth one on a level, are numbered inside the assembly above them.
+- A part used in several assemblies is numbered in the first one. Content Center and read-only files are skipped;
+  any row can be unticked.
+- **Keep numbers that already fit**: documents that already have a number of this order keep it, so new parts get the
+  free numbers and released numbers do not move.
+
 ## Settings in the window
 
 - **Model orientation** – Z up (models standing on the XY plane, the default) or Y up (Inventor's default). All views,

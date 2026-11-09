@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <Compile Include="CoreTests.cs" />
-    <Compile Include="..\src\Core\Naming.cs;..\src\Core\Scales.cs;..\src\Core\SheetPlan.cs;..\src\Core\DocNode.cs;..\src\Core\Settings.cs;..\src\Core\Log.cs;..\src\Drawing\Layout.cs;..\src\Drawing\SheetFrame.cs" />
+    <Compile Include="..\src\Core\Naming.cs;..\src\Core\Scales.cs;..\src\Core\SheetPlan.cs;..\src\Core\DocNode.cs;..\src\Core\Settings.cs;..\src\Core\Log.cs;..\src\Core\PartNumbering.cs;..\src\Drawing\Layout.cs;..\src\Drawing\SheetFrame.cs" />
   </ItemGroup>
 
   <ItemGroup>

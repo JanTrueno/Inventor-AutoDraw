@@ -32,6 +32,21 @@ namespace AutoDraw.Core
         /// <summary>An assembly with more parts list rows than this gets two sheets.</summary>
         public int LargeAssemblyRows { get; set; } = 15;
 
+        // ----- bulk part numbers (Numbering… window) -----
+
+        /// <summary>Tokens: {order} (last digits of the order number), {asm}, {seq}, {type}, {name} (file name).</summary>
+        public string NumberPattern { get; set; } = "{order}.{asm}.{seq}-{type}";
+        /// <summary>How many of the order number's last digits {order} holds; 0 = all.</summary>
+        public int NumberOrderDigits { get; set; } = 4;
+        /// <summary>The iProperties that get the number: built-in (by name, e.g. Part Number) or custom (added when missing).</summary>
+        public List<string> NumberProperties { get; set; } = new List<string> { "Part Number" };
+        /// <summary>Type letter per <see cref="DocKind"/> name; missing kinds use the default letters (S Z P D B G).</summary>
+        public Dictionary<string, string> TypeLetters { get; set; } = new Dictionary<string, string>();
+        /// <summary>Documents whose number already fits the pattern keep their assembly code and sequence number.</summary>
+        public bool NumberKeepExisting { get; set; } = true;
+        public int NumberWindowW { get; set; } = 960;
+        public int NumberWindowH { get; set; } = 680;
+
         public int WindowX { get; set; } = -1;
         public int WindowY { get; set; } = -1;
         public int WindowW { get; set; } = 1280;
