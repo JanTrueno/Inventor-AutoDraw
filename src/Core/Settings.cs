@@ -26,6 +26,9 @@ namespace AutoDraw.Core
         /// <summary>The iProperty of the new drawing that gets the order number (the title block shows it); empty = none.</summary>
         public string DrawingOrderProperty { get; set; } = "ordernummer";
 
+        /// <summary>The iProperty a sheet is named after (e.g. Part Number); empty, or empty in the document: the file name.</summary>
+        public string SheetNameProperty { get; set; } = "Part Number";
+
         /// <summary>External iLogic rules (names as in the iLogic browser) run on the new drawing before it is saved.</summary>
         public List<string> DrawingRules { get; set; } = new List<string>();
 

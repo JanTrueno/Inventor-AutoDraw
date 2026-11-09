@@ -67,6 +67,8 @@ Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
 
 - **Model orientation** – Z up (models standing on the XY plane, the default) or Y up (Inventor's default). All views,
   the iso view included, are made with this axis pointing up.
+- **Name sheets after iProperty** – sheets are named after this iProperty of their document (default Part Number);
+  empty, or empty in the document: the file name.
 - **Order number also into drawing iProperty** – the new drawing gets the order number in this iProperty
   (default `ordernummer`), so the title block shows it. Empty: none.
 - **iLogic rules to run on the new drawing** – external rule names, separated by `;`, run after saving; the drawing is

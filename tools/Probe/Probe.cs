@@ -28,6 +28,8 @@ internal static class Probe
         if (args[0] == "part") return Part(app, args[1]);
         if (args[0] == "dims") return Dims(app, args[1], args[2]);
         if (args[0] == "sheets") return Sheets(app, args[1]);
+        if (args[0] == "panes") return Panes(app, args[1]);
+        if (args[0] == "newsheet") return NewSheet(app, args[1], args[2]);
         return 1;
     }
 
@@ -82,6 +84,80 @@ internal static class Probe
             }
         }
         finally { ((Document)d).Close(true); }
+        return 0;
+    }
+
+    // opens the drawing visibly and tries a sheet move in every browser pane; closed without saving
+    private static int Panes(Inventor.Application app, string path)
+    {
+        var d = (DrawingDocument)app.Documents.Open(path, true);
+        try
+        {
+            foreach (BrowserPane p in ((Document)d).BrowserPanes)
+            {
+                string info = p.Name + " / " + p.InternalName + " visible=" + p.Visible;
+                try
+                {
+                    BrowserNode n1 = p.GetBrowserNodeFromObject(d.Sheets[1]);
+                    BrowserNode n3 = p.GetBrowserNodeFromObject(d.Sheets[3]);
+                    info += " nodes=" + (n1 != null) + "," + (n3 != null);
+                    p.Reorder(n1, true, n3, Type.Missing);
+                    info += " move OK -> first " + d.Sheets[1].Name;
+                }
+                catch (Exception ex) { info += " FAILED " + ex.Message; }
+                Console.WriteLine(info);
+            }
+        }
+        finally { ((Document)d).Close(true); }
+        return 0;
+    }
+
+    // as AutoDraw's update: copies the template's first sheet into the drawing (opened visibly), then moves it to
+    // place 3, first as it is (the new sheet active), then with the target activated; closed without saving
+    private static int NewSheet(Inventor.Application app, string path, string template)
+    {
+        var d = (DrawingDocument)app.Documents.Open(path, true);
+        var t = (DrawingDocument)app.Documents.Open(template, false);
+        try
+        {
+            int k = 0;
+            foreach (Sheet sh in d.Sheets) { k++; try { sh.Name = "0448.100." + k.ToString("000") + "-Z"; } catch (Exception ex) { Console.WriteLine("rename failed " + ex.Message); } }
+            Console.WriteLine("renamed: " + d.Sheets[1].Name + ", " + d.Sheets[2].Name);
+            Sheet copy = t.Sheets[1].CopyTo((_DrawingDocument)d);
+            ((Document)t).Close(true);
+            t = null;
+            copy.Activate();
+            Console.WriteLine("new sheet " + copy.Name + " at " + d.Sheets.Count);
+            BrowserPane pane = ((Document)d).BrowserPanes["DlHierarchy"];
+            BrowserNode nc = null;
+            try { nc = pane.GetBrowserNodeFromObject(copy); Console.WriteLine("node of the new sheet: " + (nc != null)); }
+            catch (Exception ex) { Console.WriteLine("node of the new sheet FAILED " + ex.Message); }
+            try
+            {
+                pane.Reorder(pane.GetBrowserNodeFromObject(d.Sheets[3]), true, pane.GetBrowserNodeFromObject(copy), Type.Missing);
+                Console.WriteLine("move (new sheet active): OK -> 3rd " + d.Sheets[3].Name);
+            }
+            catch (Exception ex) { Console.WriteLine("move (new sheet active): FAILED " + ex.Message); }
+            Sheet target = d.Sheets[5];
+            target.Activate();
+            try
+            {
+                pane.Reorder(pane.GetBrowserNodeFromObject(target), true, pane.GetBrowserNodeFromObject(copy), Type.Missing);
+                Console.WriteLine("move (target active): OK -> 5th " + d.Sheets[5].Name);
+            }
+            catch (Exception ex) { Console.WriteLine("move (target active): FAILED " + ex.Message); }
+            try
+            {
+                pane.Reorder(pane.GetBrowserNodeFromObject(d.Sheets[2]), false, pane.GetBrowserNodeFromObject(copy), Type.Missing);
+                Console.WriteLine("move after (Before=false): OK -> 3rd " + d.Sheets[3].Name);
+            }
+            catch (Exception ex) { Console.WriteLine("move after: FAILED " + ex.Message); }
+        }
+        finally
+        {
+            if (t != null) ((Document)t).Close(true);
+            ((Document)d).Close(true);
+        }
         return 0;
     }
 

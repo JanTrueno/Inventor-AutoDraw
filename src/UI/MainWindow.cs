@@ -40,6 +40,7 @@ namespace AutoDraw.UI
         private readonly FieldBox _template;
         private readonly FieldBox _large;
         private readonly FieldBox _drawingOrder;
+        private readonly FieldBox _sheetName;
         private readonly FieldBox _rules;
         private readonly ThemedCombo _up;
         private readonly PictureBox _thumb = new PictureBox();
@@ -102,6 +103,7 @@ namespace AutoDraw.UI
             _template = new FieldBox(_theme) { Dock = DockStyle.Fill, Hint = "Choose an .idw template" };
             _large = new FieldBox(_theme) { Dock = DockStyle.Top };
             _drawingOrder = new FieldBox(_theme) { Hint = "e.g. ordernummer (empty: none)" };
+            _sheetName = new FieldBox(_theme) { Hint = "e.g. Part Number (empty: file name)" };
             _rules = new FieldBox(_theme) { Hint = "external rule names, separated by ;" };
             _up = new ThemedCombo(_theme);
             _generate = new InventorButton(_theme, "Generate drawing", true) { Size = new Size(140, 28) };
@@ -133,6 +135,8 @@ namespace AutoDraw.UI
             };
             _drawingOrder.Text = _settings.DrawingOrderProperty;
             _drawingOrder.TextChanged += (s, e) => { _settings.DrawingOrderProperty = _drawingOrder.Text.Trim(); _settings.Save(); };
+            _sheetName.Text = _settings.SheetNameProperty;
+            _sheetName.TextChanged += (s, e) => { _settings.SheetNameProperty = _sheetName.Text.Trim(); _settings.Save(); };
             _rules.Text = string.Join("; ", _settings.DrawingRules);
             _rules.TextChanged += (s, e) =>
             {
@@ -186,6 +190,10 @@ namespace AutoDraw.UI
             stack.Controls.Add(Caption("Order number also into drawing iProperty", w));
             _drawingOrder.Size = new Size(w, 22);
             stack.Controls.Add(_drawingOrder);
+
+            stack.Controls.Add(Caption("Name sheets after iProperty", w));
+            _sheetName.Size = new Size(w, 22);
+            stack.Controls.Add(_sheetName);
 
             stack.Controls.Add(Caption("iLogic rules to run on the new drawing", w));
             _rules.Size = new Size(w, 22);

@@ -74,10 +74,11 @@ namespace AutoDraw.Drawing
                     Sheet sheet = drawing.Sheets[i + 1];
                     progress("Sheet " + job.SheetNo + " of " + jobs.Count + ": " + job.Node.Name);
                     try { OnSheet?.Invoke(i, jobs.Count, job.Node.Name + "  (" + DocKinds.Label(job.Node.Kind) + (job.Parts > 1 ? ", sheet " + (job.Part + 1) + " of " + job.Parts : "") + ")"); } catch { }
-                    try { sheet.Name = job.Node.Name; } catch { }
+                    try { sheet.Name = SheetName(job.Node); } catch { }
                     try
                     {
                         Build(sheet, job);
+                        try { sheet.Name = SheetName(job.Node); } catch { }   // the template's sheet label may have renamed it
                         if (job.Part == 0) { job.Node.Status = "Sheet " + job.SheetNo; job.Node.StatusBad = false; }
                     }
                     catch (Exception ex)
@@ -108,6 +109,16 @@ namespace AutoDraw.Drawing
                 if (background != null) { try { _app.DrawingOptions.EnableBackgroundUpdates = background.Value; } catch { } }
                 if (!done) { try { drawing.Close(true); } catch { } }
             }
+        }
+
+        /// <summary>The sheet's name: the chosen iProperty (as typed in the tree, else from the file), else the file name.</summary>
+        private string SheetName(DocNode n)
+        {
+            string prop = (_settings.SheetNameProperty ?? "").Trim();
+            string v = "";
+            if (prop.Length > 0) v = n.Edited.TryGetValue(prop, out string e) ? e : Props.Get(n.Doc, prop);
+            v = (v ?? "").Trim().Replace(':', '-');
+            return v.Length > 0 ? v : n.Name;
         }
 
         // ----- updating an existing drawing --------------------------------------------------------------------------
@@ -202,12 +213,15 @@ namespace AutoDraw.Drawing
                 try { OnSheet?.Invoke(toBuild.Count, Math.Max(1, toBuild.Count), ""); } catch { }
 
                 progress("Sorting the sheets…");
+                // the browser only reorders in the active document; making a flat pattern can have opened a part window
+                try { ((Document)drawing).Activate(); } catch (Exception ex) { Log.Write("Activating the drawing failed: " + ex.Message); }
+                try { Log.Write("Sorting with active document " + _app.ActiveDocument?.DisplayName); } catch { }
                 List<Sheet> desired = jobs.Select(j => sheetOf[j])
                     .Concat(others.Select(o => o.Sheet).Where(s => !deleted.Contains(s))).ToList();
                 Reorder(drawing, desired);
                 foreach (SheetJob job in jobs)
                 {
-                    try { sheetOf[job].Name = job.Node.Name; } catch { }
+                    try { sheetOf[job].Name = SheetName(job.Node); } catch { }
                     if (job.Part == 0 && !job.Node.StatusBad) job.Node.Status = "Sheet " + job.SheetNo;
                     job.Node.Redo = false;
                 }
