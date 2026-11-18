@@ -607,7 +607,12 @@ namespace AutoDraw.UI
             _thumb.Image = null;
             old?.Dispose();
             if (n == null || n.IsGroup || n.Doc == null) { _info.Text = ""; return; }
-            try { _thumb.Image = Icons.FromPicture(n.Doc.GetType().InvokeMember("Thumbnail", System.Reflection.BindingFlags.GetProperty, null, n.Doc, null)); } catch { }
+            try
+            {
+                Image picture = Icons.FromPicture(n.Doc.GetType().InvokeMember("Thumbnail", System.Reflection.BindingFlags.GetProperty, null, n.Doc, null));
+                _thumb.Image = Icons.Fit(picture, Math.Min(_thumb.ClientSize.Width, _thumb.ClientSize.Height));
+            }
+            catch { }
             string size = "";
             try
             {

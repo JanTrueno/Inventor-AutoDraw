@@ -20,6 +20,34 @@ namespace AutoDraw.UI
             try { return picture == null ? null : PictureConverter.FromPictureDisp(picture); } catch { return null; }
         }
 
+        /// <summary>
+        /// The image drawn into a square bitmap of <paramref name="size"/> pixels, as large as fits and centred. Inventor's
+        /// thumbnails are often metafiles, which a PictureBox does not scale reliably.
+        /// </summary>
+        public static Image Fit(Image src, int size)
+        {
+            if (src == null || size < 8) return src;
+            try
+            {
+                GraphicsUnit unit = GraphicsUnit.Pixel;
+                RectangleF b = src.GetBounds(ref unit);
+                if (b.Width <= 0 || b.Height <= 0) return src;
+                float s = Math.Min(size / b.Width, size / b.Height);
+                float w = b.Width * s, h = b.Height * s;
+                var bmp = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (Graphics g = Graphics.FromImage(bmp))
+                {
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    g.DrawImage(src, new RectangleF((size - w) / 2, (size - h) / 2, w, h), b, unit);
+                }
+                src.Dispose();
+                return bmp;
+            }
+            catch { return src; }
+        }
+
         public static object Create(int size)
         {
             float scale = 1f;
