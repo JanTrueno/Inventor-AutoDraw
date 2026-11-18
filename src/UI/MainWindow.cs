@@ -47,7 +47,11 @@ namespace AutoDraw.UI
         private readonly PictureBox _thumb = new PictureBox();
         private readonly Label _info = new Label();
         private readonly Label _status = new Label();
-        private readonly InventorButton _generate, _close, _reload, _browse, _columns, _numbering, _modelsButton, _types;
+        private readonly InventorButton _generate, _close, _reload, _browse, _columns, _numbering, _modelsButton;
+        /// <summary>One tick per document type, always shown: a type switched off gets no sheets.</summary>
+        private readonly Dictionary<DocKind, CheckBox> _typeBoxes = new Dictionary<DocKind, CheckBox>();
+        private FlowLayoutPanel _typePanel;
+        private bool _typesFilling;
         private ApplicationEvents _appEvents;
         private bool _busy, _cancel;
 
@@ -133,7 +137,6 @@ namespace AutoDraw.UI
             _columns = new InventorButton(_theme, "Columns…", false) { Size = new Size(80, 26) };
             _numbering = new InventorButton(_theme, "Numbering…", false) { Size = new Size(96, 26) };
             _modelsButton = new InventorButton(_theme, "Models…", false) { Size = new Size(80, 26) };
-            _types = new InventorButton(_theme, "Types…", false) { Size = new Size(80, 26) };
 
             _grid = new TreeGrid(_theme) { Dock = DockStyle.Fill };
             _grid.LargeLimit = () => _settings.LargeAssemblyRows;
@@ -170,7 +173,6 @@ namespace AutoDraw.UI
             _browse.Click += (s, e) => BrowseTemplate();
             _reload.Click += (s, e) => { if (!_busy && _models.Count > 0) LoadModels(_models, _drawing); };
             _modelsButton.Click += (s, e) => ModelsMenu();
-            _types.Click += (s, e) => TypesMenu();
             _columns.Click += (s, e) => ColumnsMenu();
             _numbering.Click += (s, e) => Numbering();
             _generate.Click += (s, e) => { if (_busy) { _cancel = true; _generate.Text = "Stopping…"; } else if (_drawing != null) UpdateDrawing(); else Generate(); };
@@ -209,6 +211,22 @@ namespace AutoDraw.UI
             buttons.Controls.Add(_modelsButton);
             stack.Controls.Add(buttons);
 
+            stack.Controls.Add(Caption("Sheets for", w));
+            _typePanel = new FlowLayoutPanel { Size = new Size(w, 3 * 24), BackColor = _theme.Back, Margin = new Padding(0) };
+            foreach (DocKind kind in DocKinds.All)
+            {
+                DocKind k = kind;
+                var box = new CheckBox
+                {
+                    Text = DocKinds.Label(k), Size = new Size(w / 2 - 2, 22), Margin = new Padding(0, 0, 2, 2),
+                    ForeColor = _theme.Text, BackColor = _theme.Back, FlatStyle = FlatStyle.Flat, Checked = !_settings.Skips(k)
+                };
+                box.CheckedChanged += (s, e) => { if (!_typesFilling) SwitchType(k, box.Checked); };
+                _typeBoxes[k] = box;
+                _typePanel.Controls.Add(box);
+            }
+            stack.Controls.Add(_typePanel);
+
             // the settings that are set once: folded away under a Settings header
             var header = new Label
             {
@@ -231,7 +249,6 @@ namespace AutoDraw.UI
 
             var setButtons = new FlowLayoutPanel { Size = new Size(w, 32), BackColor = _theme.Back, Margin = new Padding(0, 4, 0, 0) };
             setButtons.Controls.Add(_columns);
-            setButtons.Controls.Add(_types);
             more.Controls.Add(setButtons);
 
             more.Controls.Add(Caption("Two sheets for assemblies with more rows than", w));
@@ -372,6 +389,7 @@ namespace AutoDraw.UI
                 ReadPartNumbers();
                 SheetPlan.Number(_all, _settings.LargeAssemblyRows);
                 _grid.SetRoot(_reader.Root);
+                ShowTypeCounts();
                 // the preview shows the first document straight away (the first model when there are several)
                 DocNode first = _reader.Root.Doc != null ? _reader.Root : _reader.Root.Children.FirstOrDefault(c => c.Doc != null);
                 if (first != null) _grid.Select(first);
@@ -439,35 +457,36 @@ namespace AutoDraw.UI
         }
 
         /// <summary>
-        /// The document types with a tick each: switching one off unticks all its documents and keeps them unticked the
-        /// next time (each one can still be ticked by hand); switching it on ticks them again.
+        /// A type switched off: all its documents are unticked, and stay unticked the next time (each one can still be
+        /// ticked by hand); switched on: they are ticked again.
         /// </summary>
-        private void TypesMenu()
+        private void SwitchType(DocKind k, bool on)
         {
             if (_busy) return;
-            var menu = new ThemedMenu(_theme) { ShowCheckMargin = true };
-            foreach (DocKind kind in DocKinds.All)
+            _settings.SkippedKinds.RemoveAll(x => string.Equals(x, k.ToString(), StringComparison.OrdinalIgnoreCase));
+            if (!on) _settings.SkippedKinds.Add(k.ToString());
+            _settings.Save();
+            _grid.EndEdit();
+            int changed = SheetPlan.TickKind(_all, k, on);
+            _grid.Invalidate();
+            Renumber();
+            SetStatus(DocKinds.Label(k) + (on ? " on: " : " off: ") + changed + " document(s) " + (on ? "ticked" : "unticked") + ". " + _status.Text, false);
+        }
+
+        /// <summary>The type ticks with the number of documents of each type.</summary>
+        private void ShowTypeCounts()
+        {
+            _typesFilling = true;
+            try
             {
-                DocKind k = kind;
-                int count = _all.Count(n => !n.IsGroup && !n.IsVirtual && !n.IsContentCenter && n.Kind == k);
-                var item = new ToolStripMenuItem(DocKinds.Label(k) + " (" + count + ")") { Checked = !_settings.Skips(k) };
-                item.Click += (s, e) =>
+                foreach (KeyValuePair<DocKind, CheckBox> kv in _typeBoxes)
                 {
-                    bool on = _settings.Skips(k);
-                    _settings.SkippedKinds.RemoveAll(x => string.Equals(x, k.ToString(), StringComparison.OrdinalIgnoreCase));
-                    if (!on) _settings.SkippedKinds.Add(k.ToString());
-                    _settings.Save();
-                    _grid.EndEdit();
-                    int changed = SheetPlan.TickKind(_all, k, on);
-                    _grid.Invalidate();
-                    Renumber();
-                    SetStatus(DocKinds.Label(k) + (on ? " on: " : " off: ") + changed + " document(s) " + (on ? "ticked" : "unticked") + ". " + _status.Text, false);
-                };
-                menu.Items.Add(item);
+                    int count = _all.Count(n => !n.IsGroup && !n.IsVirtual && !n.IsContentCenter && n.Kind == kv.Key);
+                    kv.Value.Text = DocKinds.Label(kv.Key) + " (" + count + ")";
+                    kv.Value.Checked = !_settings.Skips(kv.Key);
+                }
             }
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(new ToolStripMenuItem("Switched-off types start unticked; tick a single document to draw it anyway.") { Enabled = false });
-            menu.Show(_types, new Point(0, _types.Height));
+            finally { _typesFilling = false; }
         }
 
         /// <summary>The models in the drawing (click one to take it out), the other open assemblies and parts, and Add from file.</summary>
@@ -591,6 +610,7 @@ namespace AutoDraw.UI
 
         private void Renumber()
         {
+            ShowTypeCounts();
             Quantities.Compute(_all);
             string prop = PartNumberProperty;
             bool moved = false;
@@ -797,7 +817,7 @@ namespace AutoDraw.UI
             _cancel = false;
             _grid.Enabled = false;
             _generate.Text = "Cancel";
-            _close.Enabled = _reload.Enabled = _numbering.Enabled = _modelsButton.Enabled = _types.Enabled = false;
+            _close.Enabled = _reload.Enabled = _numbering.Enabled = _modelsButton.Enabled = _typePanel.Enabled = false;
             var builder = new DrawingBuilder(_app, _settings);
             ProgressPanel progress = _progress;
             progress.Begin(total);
@@ -830,7 +850,7 @@ namespace AutoDraw.UI
                 _busy = false;
                 _grid.Enabled = true;
                 _generate.Text = _drawing != null ? "Update drawing" : "Generate drawing";
-                _close.Enabled = _reload.Enabled = _numbering.Enabled = _modelsButton.Enabled = _types.Enabled = true;
+                _close.Enabled = _reload.Enabled = _numbering.Enabled = _modelsButton.Enabled = _typePanel.Enabled = true;
                 try { _app.StatusBarText = ""; } catch { }
                 progress.End();
                 _grid.RefreshValues();

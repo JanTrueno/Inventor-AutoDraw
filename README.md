@@ -90,15 +90,17 @@ Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
 
 ## Settings in the window
 
+**Sheets for** (always shown, below the buttons): one tick per document type, with the number of documents. Switching a
+type off (e.g. Tube / profile, General) unticks all its documents, and they stay unticked when an assembly is opened
+next time. A single document can still be ticked by hand. Switching the type on ticks them again. Opened from a
+drawing, the drawing's sheets decide what is ticked.
+
 The settings below are folded away under **▸ Settings** at the bottom of the left panel (click to unfold; the window
 remembers it).
 
 - **Columns…** – iProperty columns in the tree.
 - The iProperty fields have a **…** list of the standard iProperties and the custom ones in the documents; typing a
   name works too. Defaults: `ordernummer` for the drawing, `Part Number` for the sheet names.
-- **Types…** – switch a document type off (e.g. Tube / profile, General): all its documents are unticked, and stay
-  unticked when an assembly is opened next time. A single document can still be ticked by hand. Switching the type on
-  ticks them again. Opened from a drawing, the drawing's sheets decide what is ticked.
 
 - **Model orientation** – Z up (models standing on the XY plane, the default) or Y up (Inventor's default). All views,
   the iso view included, are made with this axis pointing up.
