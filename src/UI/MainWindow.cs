@@ -273,7 +273,6 @@ namespace AutoDraw.UI
             _thumb.Size = new Size(w, w);   // square, like the thumbnails _thumb.SizeMode = PictureBoxSizeMode.Zoom; _thumb.BackColor = _theme.Field;
             _thumb.Margin = new Padding(0, 14, 0, 6);
             stack.Controls.Add(_thumb);
-            ShowGhost();
             _info.AutoSize = false; _info.Size = new Size(w, 120); _info.ForeColor = _theme.Text;
             stack.Controls.Add(_info);
 
@@ -626,27 +625,18 @@ namespace AutoDraw.UI
             SetStatus(sheets + " sheets.", false);
         }
 
-        /// <summary>The faint cube in the preview while there is no thumbnail.</summary>
-        private void ShowGhost()
-        {
-            Image old = _thumb.Image;
-            _thumb.Image = Icons.Ghost(Math.Min(_thumb.ClientSize.Width, _thumb.ClientSize.Height), _theme.Text, _theme.Dark ? 0.22f : 0.18f);
-            if (old != null && old != _thumb.Image) old.Dispose();
-        }
-
         private void ShowNode(DocNode n)
         {
             Image old = _thumb.Image;
             _thumb.Image = null;
             old?.Dispose();
-            if (n == null || n.IsGroup || n.Doc == null) { _info.Text = ""; ShowGhost(); return; }
+            if (n == null || n.IsGroup || n.Doc == null) { _info.Text = ""; return; }
             try
             {
                 Image picture = Icons.FromPicture(n.Doc.GetType().InvokeMember("Thumbnail", System.Reflection.BindingFlags.GetProperty, null, n.Doc, null));
                 _thumb.Image = Icons.Fit(picture, Math.Min(_thumb.ClientSize.Width, _thumb.ClientSize.Height));
             }
             catch { }
-            if (_thumb.Image == null) ShowGhost();
             string size = "";
             try
             {

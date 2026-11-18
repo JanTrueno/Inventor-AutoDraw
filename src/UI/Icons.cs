@@ -48,35 +48,6 @@ namespace AutoDraw.UI
             catch { return src; }
         }
 
-        /// <summary>
-        /// A faint, drawn cube (a part in isometric view) for the preview without a thumbnail, in <paramref name="tint"/>
-        /// (the theme's text colour, so light on dark and dark on light) at <paramref name="opacity"/>, centred.
-        /// </summary>
-        public static Image Ghost(int size, Color tint, float opacity, float scale = 0.5f)
-        {
-            if (size < 8) return null;
-            var bmp = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            using (Graphics g = Graphics.FromImage(bmp))
-            using (var pen = new Pen(Color.FromArgb((int)(255 * opacity), tint), Math.Max(1.5f, size / 60f)) { LineJoin = LineJoin.Round, StartCap = LineCap.Round, EndCap = LineCap.Round })
-            {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                float r = size * scale / 2, cx = size / 2f, cy = size / 2f;
-                float dx = r * 0.866f, dy = r * 0.5f;   // cos/sin 30°
-                var top = new PointF(cx, cy - r);
-                var upperRight = new PointF(cx + dx, cy - dy);
-                var lowerRight = new PointF(cx + dx, cy + dy);
-                var bottom = new PointF(cx, cy + r);
-                var lowerLeft = new PointF(cx - dx, cy + dy);
-                var upperLeft = new PointF(cx - dx, cy - dy);
-                var centre = new PointF(cx, cy);
-                g.DrawPolygon(pen, new[] { top, upperRight, lowerRight, bottom, lowerLeft, upperLeft });
-                g.DrawLine(pen, centre, upperLeft);
-                g.DrawLine(pen, centre, upperRight);
-                g.DrawLine(pen, centre, bottom);
-            }
-            return bmp;
-        }
-
         public static object Create(int size)
         {
             float scale = 1f;
