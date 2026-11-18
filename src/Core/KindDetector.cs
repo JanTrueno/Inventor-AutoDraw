@@ -48,7 +48,10 @@ namespace AutoDraw.Core
             {
                 int bends = 0;
                 try { bends = sm.Bends.Count; } catch { }
-                return bends > 0 ? DocKind.SheetMetalFolded : DocKind.SheetMetalFlat;
+                if (bends > 0) return DocKind.SheetMetalFolded;
+                // no bends: flat sheet only when the part is as thin as the sheet; a solid made in a sheet metal template
+                // (a fitting, a block) is judged by its shape below
+                if (IsSheetThin(part.ComponentDefinition, sm)) return DocKind.SheetMetalFlat;
             }
 
             if (IsFrameMember(doc)) return DocKind.Tube;
@@ -60,6 +63,18 @@ namespace AutoDraw.Core
             if (shape.Rotational) return DocKind.Lathe;
             if (shape.Long && shape.AlongFraction > 0.85) return DocKind.Tube;
             return DocKind.General;
+        }
+
+        /// <summary>The thinnest side of the part is the sheet thickness (within 10 %, at least 0.1 mm).</summary>
+        private static bool IsSheetThin(PartComponentDefinition def, SheetMetalComponentDefinition sm)
+        {
+            try
+            {
+                double t = Convert.ToDouble(sm.Thickness.Value);   // cm
+                ShortestAxis(def.RangeBox, out double shortest, out _);
+                return t > 0 && Math.Abs(shortest - t) <= Math.Max(0.01, 0.1 * t);
+            }
+            catch { return true; }   // cannot tell: keep it sheet metal
         }
 
         /// <summary>Frame Generator stores its data in attribute sets on the member part.</summary>

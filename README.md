@@ -129,7 +129,9 @@ group at the bottom.
 | General | front, top, side, iso; overall dimensions |
 
 Empty documents (a part without bodies, an assembly without components) are unticked with the status "empty". Sheet
-metal is one solid: a sheet metal file with several solids (e.g. an imported STEP of a bought part) is General.
+metal is one solid: a sheet metal file with several solids (e.g. an imported STEP of a bought part) is General. Without
+bends it is a flat sheet only when the part is as thin as its sheet thickness; otherwise (e.g. a fitting made in a
+sheet metal template) its shape decides.
 
 Scales are standard scales picked to fit; the sheet size comes from the template.
 
