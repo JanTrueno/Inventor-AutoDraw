@@ -28,8 +28,8 @@ namespace AutoDraw.Core
             switch (k)
             {
                 case DocKind.Assembly: return "Assembly";
-                case DocKind.SheetMetalFolded: return "Bent";     // sheet metal with bends (zetwerk)
-                case DocKind.SheetMetalFlat: return "Flat";      // flat sheet metal
+                case DocKind.SheetMetalFolded: return "Bent sheet";   // sheet metal with bends (zetwerk)
+                case DocKind.SheetMetalFlat: return "Flat sheet";    // flat sheet metal
                 case DocKind.Lathe: return "Lathe";
                 case DocKind.Tube: return "Tube / profile";
                 default: return "General";

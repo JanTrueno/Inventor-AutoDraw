@@ -113,7 +113,7 @@ remembers it).
 
 ## Sheets
 
-Order: main assembly → sub-assemblies → bent → flat → lathe parts → tubes → general,
+Order: main assembly → sub-assemblies → bent sheet → flat sheet → lathe parts → tubes → general,
 by part number within each type (the file name when it has none). Content Center parts are in a closed, unticked
 group at the bottom.
 
@@ -121,8 +121,8 @@ group at the bottom.
 |---|---|
 | Assembly (≤ 15 rows) | front, top, side, iso with balloons, parts list on the title block, overall dimensions |
 | Assembly (> 15 rows) | sheet 1: iso + parts list + balloons; sheet 2: front/top/side with overall dimensions; sheets 3+: one front view |
-| Bent (sheet metal with bends) | bent front/top/side + iso, flat pattern with edge view: overall, chain bend dimensions, bend notes, hole notes |
-| Flat (sheet metal without bends) | flat pattern + edge view (thickness), overall dimensions, hole notes |
+| Bent sheet | bent front/top/side + iso, flat pattern with edge view: overall, chain bend dimensions, bend notes, hole notes |
+| Flat sheet | flat pattern + edge view (thickness), overall dimensions, hole notes |
 | Lathe | side view with the axis horizontal, end view, iso; length and Ø |
 | Tube / profile | long view, end view, iso; length and profile size (Ø for round tubes) |
 | General | front, top, side, iso; overall dimensions |
