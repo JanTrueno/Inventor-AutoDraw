@@ -13,11 +13,12 @@ part type, parts lists with balloons, overall dimensions and, on flat patterns, 
 5. **Generate drawing**. The drawing is saved next to the assembly as `<ordernummer>_<assembly>_<y-M-d>.idw`
    (`_2`, `_3` … when that name is taken) and opened.
 
-## Several assemblies in one drawing
+## Several models, loose parts
 
-For separate assemblies without a main assembly: open one, start AutoDraw, then **Assemblies…** → **Add** an open
-assembly or **Add from file…** (or click AutoDraw in another open assembly and answer Yes). The tree gets a top row
-`A+B+…` without a sheet, with each assembly under it as if it were a sub-assembly:
+AutoDraw also starts from a part (**3D Model** or **Sheet Metal** tab). For separate assemblies and loose parts without
+a main assembly: start AutoDraw on one, then **Models…** → **Add** an open assembly or part or **Add from file…**
+(`.iam`, `.ipt`; or click AutoDraw in another open model and answer Yes). With a part, or with more than one model, the
+tree gets a top row `A+B+…` without a sheet, with each model under it as if it were in one main assembly:
 
 - sheets: the assemblies first, then all parts by type, as usual; a part used in several assemblies has one sheet,
   with the total quantity;
@@ -25,7 +26,13 @@ assembly or **Add from file…** (or click AutoDraw in another open assembly and
 - the order number is written to every assembly; the drawing is saved next to the first one as
   `<ordernummer>_A+B_<date>.idw` (`A+2 more` when the names get long);
 - the drawing remembers its assemblies (custom iProperty `AutoDraw Assemblies`), so **Update drawing** opens for all
-  of them again. **Assemblies…** also adds or takes out an assembly there; ticks, types and typed values are kept.
+  of them again. **Models…** also adds or takes out a model there; ticks, types and typed values are kept.
+
+## Vault
+
+Before **Generate drawing**, **Update drawing** and **Numbering…**, AutoDraw looks for files it would write that are
+read-only (checked in) and asks whether to check them out. Yes runs Vault's **Check Out** on the drawing and the
+models, where the files are ticked; No goes on without them (they are not written).
 
 ## Updating a drawing
 
@@ -81,6 +88,15 @@ Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
   as number again (Inventor's default part number). **Refresh** reads the iProperties from the files again.
 
 ## Settings in the window
+
+The settings below are folded away under **▸ Settings** (click to unfold; the window remembers it).
+
+- **Columns…** – iProperty columns in the tree.
+- The iProperty fields have a **…** list of the standard iProperties and the custom ones in the documents; typing a
+  name works too. Defaults: `ordernummer` for the drawing, `Part Number` for the sheet names.
+- **Types…** – switch a document type off (e.g. Tube / profile, General): all its documents are unticked, and stay
+  unticked when an assembly is opened next time. A single document can still be ticked by hand. Switching the type on
+  ticks them again. Opened from a drawing, the drawing's sheets decide what is ticked.
 
 - **Model orientation** – Z up (models standing on the XY plane, the default) or Y up (Inventor's default). All views,
   the iso view included, are made with this axis pointing up.

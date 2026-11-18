@@ -38,7 +38,7 @@ namespace AutoDraw.Drawing
         }
 
         /// <summary>Makes and saves the drawing; returns its path, or null when cancelled.</summary>
-        public string Run(IList<AssemblyDocument> assemblies, DocNode root, List<SheetJob> jobs, IEnumerable<DocNode> all, string order,
+        public string Run(IList<Document> assemblies, DocNode root, List<SheetJob> jobs, IEnumerable<DocNode> all, string order,
             Action<string> progress, Func<bool> cancelled)
         {
             string template = _settings.TemplatePath;
@@ -94,7 +94,7 @@ namespace AutoDraw.Drawing
 
                 try { OnSheet?.Invoke(jobs.Count, jobs.Count, ""); } catch { }
                 progress("Saving…");
-                string folder = Path.GetDirectoryName(((Document)assemblies[0]).FullFileName) ?? "";
+                string folder = Path.GetDirectoryName(assemblies[0].FullFileName) ?? "";
                 string path = Naming.DrawingPath(folder, order, root.Name, DateTime.Now);
                 bool silent = _app.SilentOperation;
                 _app.SilentOperation = true;
@@ -130,7 +130,7 @@ namespace AutoDraw.Drawing
         /// and, when <paramref name="deleteOthers"/>, the sheets of documents that are unticked or no longer in the
         /// assembly; then puts all sheets in sheet-plan order (other sheets at the end), names them and saves.
         /// </summary>
-        public void Update(DrawingDocument drawing, IList<AssemblyDocument> assemblies, List<SheetJob> jobs, IEnumerable<DocNode> all, string order,
+        public void Update(DrawingDocument drawing, IList<Document> assemblies, List<SheetJob> jobs, IEnumerable<DocNode> all, string order,
             bool deleteOthers, Action<string> progress, Func<bool> cancelled)
         {
             if (jobs.Count == 0) throw new InvalidOperationException("Tick at least one document.");
@@ -369,7 +369,7 @@ namespace AutoDraw.Drawing
 
         // ----- iProperties ------------------------------------------------------------------------------------------
 
-        private void WriteProperties(IList<AssemblyDocument> assemblies, List<SheetJob> jobs, IEnumerable<DocNode> all, string order)
+        private void WriteProperties(IList<Document> assemblies, List<SheetJob> jobs, IEnumerable<DocNode> all, string order)
         {
             var changed = new HashSet<Document>();
             void Set(Document doc, string name, string value, DocNode node)
@@ -383,7 +383,7 @@ namespace AutoDraw.Drawing
                 }
             }
 
-            foreach (AssemblyDocument a in assemblies) Set((Document)a, _settings.OrderProperty, order.Trim(), null);
+            foreach (Document a in assemblies) Set(a, _settings.OrderProperty, order.Trim(), null);
             foreach (SheetJob j in jobs.Where(j => j.Part == 0))
             {
                 Set(j.Node.Doc, _settings.QuantityProperty, j.Node.QuantityValue, j.Node);

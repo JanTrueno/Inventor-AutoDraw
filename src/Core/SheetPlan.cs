@@ -39,6 +39,18 @@ namespace AutoDraw.Core
             return jobs;
         }
 
+        /// <summary>Ticks or unticks every document of a kind (Content Center parts stay as they are); returns how many.</summary>
+        public static int TickKind(IEnumerable<DocNode> nodes, DocKind kind, bool on)
+        {
+            int count = 0;
+            foreach (DocNode n in nodes.Where(n => !n.IsGroup && !n.IsVirtual && !n.IsContentCenter && n.Kind == kind))
+            {
+                n.Checked = on;
+                count++;
+            }
+            return count;
+        }
+
         /// <summary>Fills <see cref="DocNode.SheetNo"/> of every node (0 for nodes without a sheet).</summary>
         public static List<SheetJob> Number(IEnumerable<DocNode> nodes, int largeLimit)
         {

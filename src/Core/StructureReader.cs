@@ -21,38 +21,38 @@ namespace AutoDraw.Core
 
         public StructureReader(Action<string> progress) { _progress = progress; }
 
-        public void Read(AssemblyDocument main) => Read(new List<AssemblyDocument> { main });
+        public void Read(AssemblyDocument main) => Read(new List<Document> { (Document)main });
 
         /// <summary>
-        /// One assembly: it is the root. Several: a root without a document (no sheet) with each assembly under it, as
-        /// if they were sub-assemblies of one main assembly; an assembly that is also inside another one is read once.
+        /// One assembly: it is the root. Several models, or a part: a root without a document (no sheet) with each
+        /// assembly or part under it, as if they were in one main assembly; one that is also inside another is read once.
         /// </summary>
-        public void Read(IList<AssemblyDocument> assemblies)
+        public void Read(IList<Document> models)
         {
             ContentGroup = new DocNode { IsGroup = true, Name = "Content Center", Checked = false, Expanded = false };
-            if (assemblies.Count == 1)
+            if (models.Count == 1 && models[0] is AssemblyDocument single)
             {
-                Root = NewNode((Document)assemblies[0]);
+                Root = NewNode(models[0]);
                 Root.IsMain = true;
-                Walk(assemblies[0].ComponentDefinition, Root, RowsOf(Root));
+                Walk(single.ComponentDefinition, Root, RowsOf(Root));
             }
             else
             {
                 Root = new DocNode
                 {
                     IsMain = true, IsVirtual = true, IsAssembly = true, Checked = false,
-                    Name = Naming.GroupName(assemblies.Select(a => System.IO.Path.GetFileNameWithoutExtension(((Document)a).FullFileName ?? "?")).ToList())
+                    Name = Naming.GroupName(models.Select(a => System.IO.Path.GetFileNameWithoutExtension(a.FullFileName ?? "?")).ToList())
                 };
-                foreach (AssemblyDocument asm in assemblies)
+                foreach (Document model in models)
                 {
-                    string key = ((Document)asm).FullDocumentName ?? "";
+                    string key = model.FullDocumentName ?? "";
                     if (_nodes.TryGetValue(key, out DocNode seen)) { Use(seen, Root); continue; }
-                    DocNode node = NewNode((Document)asm);
+                    DocNode node = NewNode(model);
                     node.Parent = Root;
                     Root.Children.Add(node);
                     Use(node, Root);
                     Root.OwnRows = Root.Children.Count;
-                    Walk(asm.ComponentDefinition, node, RowsOf(node));
+                    if (model is AssemblyDocument asm) Walk(asm.ComponentDefinition, node, RowsOf(node));
                 }
             }
 

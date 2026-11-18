@@ -30,7 +30,25 @@ internal static class Probe
         if (args[0] == "sheets") return Sheets(app, args[1]);
         if (args[0] == "panes") return Panes(app, args[1]);
         if (args[0] == "newsheet") return NewSheet(app, args[1], args[2]);
+        if (args[0] == "commands") return Commands(app, args[1]);
         return 1;
+    }
+
+    // control definitions whose internal or display name contains the text (e.g. Vault), and the add-ins that are loaded
+    private static int Commands(Inventor.Application app, string text)
+    {
+        foreach (ControlDefinition c in app.CommandManager.ControlDefinitions)
+        {
+            string id = "", name = "";
+            try { id = c.InternalName; name = c.DisplayName; } catch { }
+            if (id.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0)
+                Console.WriteLine(id + "  |  " + name);
+        }
+        foreach (ApplicationAddIn a in app.ApplicationAddIns)
+        {
+            try { if (a.DisplayName.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0) Console.WriteLine("add-in: " + a.DisplayName + " " + a.ClientId + " active=" + a.Activated); } catch { }
+        }
+        return 0;
     }
 
     // which document each sheet shows (first base view), and a test move of the last sheet to the front in the

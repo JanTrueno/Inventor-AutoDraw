@@ -67,6 +67,8 @@ namespace AutoDraw
         {
             AddTo("Assembly", "id_TabAssemble");     // make the drawing
             AddTo("Drawing", "id_TabPlaceViews");    // update a drawing made by AutoDraw
+            AddTo("Part", "id_TabModel");            // a drawing of a loose part (more can be added)
+            AddTo("Part", "id_TabSheetMetal");
         }
 
         private void AddTo(string ribbon, string tabId)

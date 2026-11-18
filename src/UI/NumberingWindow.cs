@@ -18,7 +18,7 @@ namespace AutoDraw.UI
     /// </summary>
     internal sealed class NumberingWindow : Form
     {
-        private static readonly string[] Standard =
+        internal static readonly string[] Standard =
         {
             "Part Number", "Stock Number", "Description", "Title", "Subject", "Project", "Revision Number", "Comments",
             "Keywords", "Authority", "Cost Center", "Vendor", "Designer", "Engineer"

@@ -58,20 +58,20 @@ namespace AutoDraw.Drawing
         public const string AssembliesProperty = "AutoDraw Assemblies";
 
         /// <summary>Stores which assemblies the drawing was made for, so it can be opened for all of them again.</summary>
-        public static void Remember(DrawingDocument drawing, IList<AssemblyDocument> assemblies)
+        public static void Remember(DrawingDocument drawing, IList<Document> models)
         {
-            string value = string.Join("|", assemblies.Select(a => ((Document)a).FullFileName ?? ""));
+            string value = string.Join("|", models.Select(a => a.FullFileName ?? ""));
             try { Props.Set((Document)drawing, AssembliesProperty, value); }
             catch (Exception ex) { Log.Write("Storing the assemblies in the drawing failed: " + ex.Message); }
         }
 
         /// <summary>
-        /// The assemblies of a drawing made by AutoDraw: the ones stored in the drawing (looked up among the drawing's
+        /// The models (assemblies, parts) of a drawing made by AutoDraw: the ones stored in the drawing (looked up among the drawing's
         /// documents, by path and else by file name, else opened), else the assembly on its first assembly sheet.
         /// </summary>
-        public static List<AssemblyDocument> FindAssemblies(Inventor.Application app, DrawingDocument drawing)
+        public static List<Document> FindModels(Inventor.Application app, DrawingDocument drawing)
         {
-            var list = new List<AssemblyDocument>();
+            var list = new List<Document>();
             string stored = Props.Get((Document)drawing, AssembliesProperty);
             if (stored.Length > 0)
             {
@@ -86,13 +86,14 @@ namespace AutoDraw.Drawing
                         try { d = app.Documents.Open(path, false); }
                         catch (Exception ex) { Log.Write("Opening " + path + " failed: " + ex.Message); }
                     }
-                    if (d is AssemblyDocument a && !list.Contains(a)) list.Add(a);
+                    if ((d is AssemblyDocument || d is PartDocument) && !list.Contains(d)) list.Add(d);
                     else if (d == null) Log.Write("Assembly of the drawing not found: " + path);
                 }
             }
             if (list.Count == 0)
             {
-                AssemblyDocument a = FindAssembly(drawing);
+                Document a = (Document)FindAssembly(drawing);
+                if (a == null) { try { a = OwnerDoc(drawing.Sheets[1]); } catch { } }   // a drawing of a single part
                 if (a != null) list.Add(a);
             }
             return list;

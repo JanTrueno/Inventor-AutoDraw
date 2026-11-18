@@ -32,6 +32,10 @@ namespace AutoDraw.Core
         /// <summary>External iLogic rules (names as in the iLogic browser) run on the new drawing before it is saved.</summary>
         public List<string> DrawingRules { get; set; } = new List<string>();
 
+        /// <summary>Kinds (<see cref="DocKind"/> names) that start unticked: no sheet unless ticked by hand.</summary>
+        public List<string> SkippedKinds { get; set; } = new List<string>();
+        public bool Skips(DocKind kind) => SkippedKinds.Exists(k => string.Equals(k, kind.ToString(), StringComparison.OrdinalIgnoreCase));
+
         /// <summary>An assembly with more parts list rows than this gets two sheets.</summary>
         public int LargeAssemblyRows { get; set; } = 15;
 
@@ -53,6 +57,9 @@ namespace AutoDraw.Core
         public bool NumberResetSkipped { get; set; }
         public int NumberWindowW { get; set; } = 960;
         public int NumberWindowH { get; set; } = 680;
+
+        /// <summary>The Settings part of the window is unfolded.</summary>
+        public bool SettingsOpen { get; set; }
 
         public int WindowX { get; set; } = -1;
         public int WindowY { get; set; } = -1;
