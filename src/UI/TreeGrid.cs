@@ -103,6 +103,13 @@ namespace AutoDraw.UI
 
         public DocNode SelectedNode => CurrentRow?.Tag as DocNode;
 
+        /// <summary>Makes the row of this node the current row (when it is shown).</summary>
+        public void Select(DocNode n)
+        {
+            DataGridViewRow r = Rows.Cast<DataGridViewRow>().FirstOrDefault(x => x.Tag == n);
+            if (r != null) { try { CurrentCell = r.Cells[ColName]; } catch { } }
+        }
+
         /// <summary>Fills the rows from the tree (children of closed rows are left out), keeping the selection.</summary>
         public void Rebuild()
         {

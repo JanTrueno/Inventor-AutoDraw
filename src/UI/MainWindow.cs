@@ -372,6 +372,10 @@ namespace AutoDraw.UI
                 ReadPartNumbers();
                 SheetPlan.Number(_all, _settings.LargeAssemblyRows);
                 _grid.SetRoot(_reader.Root);
+                // the preview shows the first document straight away (the first model when there are several)
+                DocNode first = _reader.Root.Doc != null ? _reader.Root : _reader.Root.Children.FirstOrDefault(c => c.Doc != null);
+                if (first != null) _grid.Select(first);
+                ShowNode(first);
                 int parts = _all.Count(n => !n.IsAssembly), subs = _all.Count(n => n.IsAssembly && !n.IsVirtual);
                 SetStatus(drawingText ?? (_models.Count > 1 ? _models.Count + " separate models; " : "") +
                     subs + " assemblies, " + parts + " parts (" + _all.Count(n => n.IsContentCenter) + " Content Center). " + CheckOrder(), false);
