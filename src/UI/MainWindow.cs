@@ -60,6 +60,29 @@ namespace AutoDraw.UI
         public static void CloseActive() { try { _active?.Close(); } catch { } }
 
         /// <summary>
+        /// Opened by another program (<see cref="AutoDrawAutomation"/>): the window for exactly these models, in place of
+        /// what it showed. Returns an error, or null.
+        /// </summary>
+        public static string OpenModels(Inventor.Application app, List<Document> models)
+        {
+            MainWindow w = _active;
+            if (w != null && !w.IsDisposed)
+            {
+                if (w._busy) return "AutoDraw is busy making a drawing.";
+                if (w.WindowState == FormWindowState.Minimized) w.WindowState = FormWindowState.Normal;
+                w.LoadModels(models, null);
+                w.Activate();
+                return null;
+            }
+            w = new MainWindow(app);
+            _active = w;
+            w.Show(new InventorWindow(app.MainFrameHWND));
+            w.LoadModels(models, null);
+            w.Activate();
+            return null;
+        }
+
+        /// <summary>
         /// Opens the window for the active assembly, or for the assembly of the active AutoDraw drawing (then the window
         /// updates that drawing), or brings it forward; returns an error, or null.
         /// </summary>
@@ -543,7 +566,7 @@ namespace AutoDraw.UI
 
         private void AddFromFile()
         {
-            using (var dlg = new OpenFileDialog { Title = "Add assemblies or parts", Filter = "Inventor models (*.iam;*.ipt)|*.iam;*.ipt|Assemblies (*.iam)|*.iam|Parts (*.ipt)|*.ipt", Multiselect = true })
+            using (var dlg = new OpenFileDialog { Title = "Add assemblies, parts or STEP files", Filter = "Models (*.iam;*.ipt;*.stp;*.step)|*.iam;*.ipt;*.stp;*.step|Assemblies (*.iam)|*.iam|Parts (*.ipt)|*.ipt|STEP (*.stp;*.step)|*.stp;*.step", Multiselect = true })
             {
                 try { if (_models.Count > 0) dlg.InitialDirectory = Path.GetDirectoryName(_models[0].FullFileName); } catch { }
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
@@ -557,7 +580,7 @@ namespace AutoDraw.UI
                         Application.DoEvents();
                         try
                         {
-                            Document a = _app.Documents.Open(f, false);
+                            Document a = ModelImport.Open(_app, f);   // a STEP: its .ipt/.iam next to it, imported when there is none
                             if ((a is AssemblyDocument || a is PartDocument) && !list.Contains(a)) list.Add(a);
                         }
                         catch (Exception ex) { Log.Write("Opening " + f + " failed: " + ex.Message); SetStatus("Could not open " + Path.GetFileName(f) + ": " + ex.Message, true); return; }

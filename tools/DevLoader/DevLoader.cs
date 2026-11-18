@@ -30,7 +30,10 @@ namespace AutoDrawDev
         private Assembly _autoDraw;
         private DateTime _loaded;
 
-        public object Automation => null;
+        private DevAutomation _automation;
+
+        /// <summary>The same Open(paths) as AutoDraw's own Automation, run by the latest build.</summary>
+        public object Automation => _automation ?? (_automation = new DevAutomation(this));
 
         private static void Log(string text)
         {
@@ -101,10 +104,7 @@ namespace AutoDrawDev
             var owner = new Win(_app.MainFrameHWND);
             try
             {
-                string dll = Path.Combine(BuildDir(), "AutoDraw.dll");
-                if (!File.Exists(dll)) { MessageBox.Show(owner, "No build at " + dll, "AutoDraw dev"); return; }
-                DateTime stamp = File.GetLastWriteTimeUtc(dll);
-                if (_autoDraw == null || stamp != _loaded) Load(dll, stamp);
+                EnsureLatest();
                 object error = Call("AutoDraw.UI.MainWindow", "Start", _app);
                 if (error is string e) MessageBox.Show(owner, e, "AutoDraw dev");
             }
@@ -112,6 +112,32 @@ namespace AutoDrawDev
             {
                 Exception inner = ex is TargetInvocationException t && t.InnerException != null ? t.InnerException : ex;
                 MessageBox.Show(owner, inner.ToString(), "AutoDraw dev");
+            }
+        }
+
+        /// <summary>Loads the build when it is newer than the one loaded.</summary>
+        private void EnsureLatest()
+        {
+            string dll = Path.Combine(BuildDir(), "AutoDraw.dll");
+            if (!File.Exists(dll)) throw new FileNotFoundException("No build at " + dll);
+            DateTime stamp = File.GetLastWriteTimeUtc(dll);
+            if (_autoDraw == null || stamp != _loaded) Load(dll, stamp);
+        }
+
+        /// <summary>Automation call from another program: forwarded to the latest build's AutoDrawAutomation.</summary>
+        internal string Open(object paths)
+        {
+            try
+            {
+                EnsureLatest();
+                object auto = Activator.CreateInstance(_autoDraw.GetType("AutoDraw.AutoDrawAutomation", true), _app);
+                return auto.GetType().GetMethod("Open").Invoke(auto, new[] { paths }) as string ?? "";
+            }
+            catch (Exception ex)
+            {
+                Exception inner = ex is TargetInvocationException t && t.InnerException != null ? t.InnerException : ex;
+                Log("Open: " + inner);
+                return inner.Message;
             }
         }
 
@@ -154,6 +180,24 @@ namespace AutoDrawDev
             public Win(int h) { Handle = new IntPtr(h); }
             public IntPtr Handle { get; }
         }
+    }
+
+    [ComVisible(true)]
+    [Guid("3a9c5e21-7d84-4f6b-b2e0-8c1d4a7f9e53")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    public interface IDevAutomation
+    {
+        string Open(object paths);
+    }
+
+    [ComVisible(true)]
+    [Guid("e27b4d90-1c6a-4e38-9f5d-6b0a3c8e2f14")]
+    [ClassInterface(ClassInterfaceType.None)]
+    public class DevAutomation : IDevAutomation
+    {
+        private readonly DevServer _server;
+        internal DevAutomation(DevServer server) { _server = server; }
+        public string Open(object paths) => _server.Open(paths);
     }
 
     /// <summary>Loads AutoDraw from the copy; Inventor's interop comes from this loader, so the COM types are the same.</summary>

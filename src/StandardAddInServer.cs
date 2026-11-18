@@ -22,11 +22,15 @@ namespace AutoDraw
         private ButtonDefinition _button;
         private UserInterfaceEvents _uiEvents;
 
-        public object Automation => null;
+        private AutoDrawAutomation _automation;
+
+        /// <summary>For other programs: <see cref="AutoDrawAutomation.Open"/> opens the window for STEP, .ipt or .iam files.</summary>
+        public object Automation => _automation;
 
         public void Activate(ApplicationAddInSite addInSiteObject, bool firstTime)
         {
             _app = addInSiteObject.Application;
+            _automation = new AutoDrawAutomation(_app);
             string clientGuid = "{" + ClientId + "}";
             InventorCommandIcons.Init(_app);
 

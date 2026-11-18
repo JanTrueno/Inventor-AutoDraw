@@ -32,6 +32,7 @@ internal static class Probe
         if (args[0] == "newsheet") return NewSheet(app, args[1], args[2]);
         if (args[0] == "commands") return Commands(app, args[1]);
         if (args[0] == "find") return Find(app, args[1]);
+        if (args[0] == "import") return Import(app, args[1]);
         if (args[0] == "activate") { var ai = app.ApplicationAddIns.ItemById[args[1]]; try { ai.Activate(); Console.WriteLine("active=" + ai.Activated); } catch (Exception ex) { Console.WriteLine(ex); } return 0; }
         return 1;
     }
@@ -291,6 +292,27 @@ internal static class Probe
                 }
             }
         }
+        return 0;
+    }
+
+    // imports a STEP (give a copy in a temp folder): what Inventor makes of it, then Save As next to it, then closes
+    private static int Import(Inventor.Application app, string path)
+    {
+        bool silent = app.SilentOperation;
+        app.SilentOperation = true;
+        try
+        {
+            Document d = app.Documents.Open(path, false);
+            Console.WriteLine("type=" + d.DocumentType + " full='" + d.FullFileName + "' dirty=" + d.Dirty + " refs=" + d.AllReferencedDocuments.Count);
+            foreach (Document r in d.AllReferencedDocuments) Console.WriteLine("  ref " + r.DocumentType + " '" + r.FullFileName + "' display=" + r.DisplayName);
+            string target = System.IO.Path.ChangeExtension(path, d is AssemblyDocument ? ".iam" : ".ipt");
+            try { d.SaveAs(target, false); Console.WriteLine("saved as " + target + " full now '" + d.FullFileName + "'"); }
+            catch (Exception ex) { Console.WriteLine("SaveAs failed: " + ex.Message); }
+            foreach (Document r in d.AllReferencedDocuments) Console.WriteLine("  after ref '" + r.FullFileName + "'");
+            d.Close(true);
+        }
+        finally { app.SilentOperation = silent; }
+        foreach (string f in System.IO.Directory.GetFiles(System.IO.Path.GetDirectoryName(path), "*", System.IO.SearchOption.AllDirectories)) Console.WriteLine("file " + f);
         return 0;
     }
 
