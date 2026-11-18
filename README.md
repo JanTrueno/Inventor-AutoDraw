@@ -64,6 +64,10 @@ Gives every document in the tree a number and writes it to the chosen iPropertie
 built-in or custom iProperty, several separated by `;`). The window shows the current and the new number of each
 document before **Apply** writes and saves them.
 
+The pattern, the assembly levels, the order number (which iProperty it comes from, default `ordernummer`, and how
+many digits) and the type letters are folded away under **▸ Settings**; **Defaults** puts them back to the standard
+below. The order number iProperty is also in the main window's Settings.
+
 Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
 
 ```

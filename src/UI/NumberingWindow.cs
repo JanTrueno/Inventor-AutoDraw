@@ -28,7 +28,7 @@ namespace AutoDraw.UI
         private readonly Theme _theme;
         private readonly AppSettings _settings;
         private readonly DocNode _root;
-        private readonly string _order;
+        private string _order;
         private readonly List<DocNode> _nodes = new List<DocNode>();
         private readonly HashSet<DocNode> _excluded = new HashSet<DocNode>();
         private readonly HashSet<DocNode> _readOnly = new HashSet<DocNode>();
@@ -38,13 +38,14 @@ namespace AutoDraw.UI
         private readonly Dictionary<DocNode, string> _resets = new Dictionary<DocNode, string>();
         private bool _ok;
 
-        private readonly FieldBox _pattern, _digits, _props, _levels;
+        private readonly FieldBox _pattern, _digits, _props, _levels, _orderProp;
+        private readonly Label _orderInfo = new Label();
         private readonly FieldBox[] _letters = new FieldBox[DocKinds.All.Length];
         private readonly CheckBox _keep = new CheckBox(), _reset = new CheckBox();
         private readonly Label _example = new Label();
         private readonly DataGridView _grid = new DataGridView();
         private readonly Label _status = new Label();
-        private readonly InventorButton _apply, _close, _propsMenu, _refresh;
+        private readonly InventorButton _apply, _close, _propsMenu, _refresh, _orderPropMenu, _defaults;
 
         /// <summary>True when numbers were written; the main window then reads the iProperties again.</summary>
         public bool Applied { get; private set; }
@@ -71,6 +72,9 @@ namespace AutoDraw.UI
             _levels = new FieldBox(theme) { Text = PartNumbering.Levels(settings).ToString() };
             _props = new FieldBox(theme) { Text = string.Join("; ", settings.NumberProperties), Hint = "e.g. Part Number; artikelnummer" };
             _propsMenu = new InventorButton(theme, "…", false) { Size = new Size(30, 22) };
+            _orderProp = new FieldBox(theme) { Text = settings.OrderProperty, Hint = "e.g. ordernummer" };
+            _orderPropMenu = new InventorButton(theme, "…", false) { Size = new Size(30, 22) };
+            _defaults = new InventorButton(theme, "Defaults", false) { Size = new Size(90, 24) };
             _apply = new InventorButton(theme, "Apply", true) { Size = new Size(110, 28), Dock = DockStyle.Right };
             _close = new InventorButton(theme, "Close", false) { Size = new Size(90, 28), Dock = DockStyle.Right };
             _refresh = new InventorButton(theme, "Refresh", false) { Size = new Size(90, 28), Dock = DockStyle.Left };
@@ -92,70 +96,151 @@ namespace AutoDraw.UI
 
         private Control BuildTop()
         {
-            var top = new Panel { Dock = DockStyle.Top, Height = 196, BackColor = _theme.Back };
+            var top = new Panel { Dock = DockStyle.Top, BackColor = _theme.Back };
             int lx = 12, fx = 140;
 
-            top.Controls.Add(Caption("Pattern", lx, 12, 120));
-            _pattern.Location = new Point(fx, 12); _pattern.Width = 260;
-            top.Controls.Add(_pattern);
-            top.Controls.Add(Caption("{order} {asm} {seq} {type} {name}", fx + 272, 12, 220));
-            top.Controls.Add(Caption("Assembly levels", fx + 500, 12, 100));
-            _levels.Location = new Point(fx + 604, 12); _levels.Width = 40;
-            top.Controls.Add(_levels);
-            top.Controls.Add(Caption("1–6", fx + 650, 12, 40));
-
-            top.Controls.Add(Caption("Order number digits", lx, 42, 128));
-            _digits.Location = new Point(fx, 42); _digits.Width = 50;
-            top.Controls.Add(_digits);
-            top.Controls.Add(Caption("last digits of " + Naming.Digits(_order) + " (0 = all)", fx + 62, 42, 220));
-            _example.Location = new Point(fx + 290, 42); _example.Size = new Size(320, 22); _example.ForeColor = _theme.Text;
+            // what is written, and which rows: always shown
+            top.Controls.Add(Caption("Write to iProperties", lx, 12, 128));
+            _props.Location = new Point(fx, 12); _props.Width = 260;
+            top.Controls.Add(_props);
+            _propsMenu.Location = new Point(fx + 264, 12);
+            top.Controls.Add(_propsMenu);
+            _example.Location = new Point(fx + 310, 12); _example.Size = new Size(360, 22); _example.ForeColor = _theme.Dim;
             _example.TextAlign = ContentAlignment.MiddleLeft;
             top.Controls.Add(_example);
 
-            top.Controls.Add(Caption("Write to iProperties", lx, 72, 128));
-            _props.Location = new Point(fx, 72); _props.Width = 260;
-            top.Controls.Add(_props);
-            _propsMenu.Location = new Point(fx + 264, 72);
-            top.Controls.Add(_propsMenu);
-            top.Controls.Add(Caption("built-in or custom, separated by ;", fx + 302, 72, 260));
-
-            top.Controls.Add(Caption("Type letters", lx, 102, 128));
-            int x = fx;
-            for (int i = 0; i < DocKinds.All.Length; i++)
-            {
-                DocKind k = DocKinds.All[i];
-                string label = k == DocKind.Tube ? "Tube" : DocKinds.Label(k);
-                Label l = Caption(label, x, 102, TextRenderer.MeasureText(label, Font).Width + 4);
-                top.Controls.Add(l);
-                x += l.Width + 2;
-                _letters[i] = new FieldBox(_theme) { Location = new Point(x, 102), Width = 34, Text = PartNumbering.Letter(_settings, k) };
-                top.Controls.Add(_letters[i]);
-                x += 34 + 14;
-                _letters[i].TextChanged += (s, e) => { SaveSettings(); Refill(); };
-            }
-
             _keep.Text = "Keep numbers that already fit the pattern (new documents get the free numbers)";
             _keep.Checked = _settings.NumberKeepExisting;
-            _keep.Location = new Point(fx, 132); _keep.Size = new Size(560, 24);
+            _keep.Location = new Point(fx, 42); _keep.Size = new Size(620, 24);
             _keep.ForeColor = _theme.Text; _keep.BackColor = _theme.Back; _keep.FlatStyle = FlatStyle.Flat;
             _keep.FlatAppearance.BorderColor = _theme.Dim;
             top.Controls.Add(_keep);
 
             _reset.Text = "Unticked rows that carry a number of this order get their file name back as number";
             _reset.Checked = _settings.NumberResetSkipped;
-            _reset.Location = new Point(fx, 158); _reset.Size = new Size(620, 24);
+            _reset.Location = new Point(fx, 68); _reset.Size = new Size(620, 24);
             _reset.ForeColor = _theme.Text; _reset.BackColor = _theme.Back; _reset.FlatStyle = FlatStyle.Flat;
             _reset.FlatAppearance.BorderColor = _theme.Dim;
             top.Controls.Add(_reset);
-            _reset.CheckedChanged += (s, e) => { SaveSettings(); Refill(); };
 
+            // the number's make-up: folded away
+            var header = new Label
+            {
+                Location = new Point(lx, 100), Size = new Size(200, 24), ForeColor = _theme.Text, TextAlign = ContentAlignment.MiddleLeft,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold), Cursor = Cursors.Hand
+            };
+            top.Controls.Add(header);
+            var adv = new Panel { Location = new Point(0, 128), Size = new Size(1200, 130), BackColor = _theme.Back };
+            top.Controls.Add(adv);
+
+            adv.Controls.Add(Caption("Pattern", lx, 0, 120));
+            _pattern.Location = new Point(fx, 0); _pattern.Width = 260;
+            adv.Controls.Add(_pattern);
+            adv.Controls.Add(Caption("{order} {asm} {seq} {type} {name}", fx + 272, 0, 220));
+            adv.Controls.Add(Caption("Assembly levels", fx + 500, 0, 100));
+            _levels.Location = new Point(fx + 604, 0); _levels.Width = 40;
+            adv.Controls.Add(_levels);
+            adv.Controls.Add(Caption("1–6", fx + 650, 0, 40));
+
+            adv.Controls.Add(Caption("Order number from", lx, 30, 128));
+            _orderProp.Location = new Point(fx, 30); _orderProp.Width = 150;
+            adv.Controls.Add(_orderProp);
+            _orderPropMenu.Location = new Point(fx + 154, 30);
+            adv.Controls.Add(_orderPropMenu);
+            adv.Controls.Add(Caption("digits", fx + 200, 30, 40));
+            _digits.Location = new Point(fx + 244, 30); _digits.Width = 40;
+            adv.Controls.Add(_digits);
+            _orderInfo.Location = new Point(fx + 292, 30); _orderInfo.Size = new Size(380, 22); _orderInfo.ForeColor = _theme.Dim;
+            _orderInfo.TextAlign = ContentAlignment.MiddleLeft;
+            adv.Controls.Add(_orderInfo);
+
+            adv.Controls.Add(Caption("Type letters", lx, 60, 128));
+            int x = fx;
+            for (int i = 0; i < DocKinds.All.Length; i++)
+            {
+                DocKind k = DocKinds.All[i];
+                string label = k == DocKind.Tube ? "Tube" : DocKinds.Label(k);
+                Label l = Caption(label, x, 60, TextRenderer.MeasureText(label, Font).Width + 4);
+                adv.Controls.Add(l);
+                x += l.Width + 2;
+                _letters[i] = new FieldBox(_theme) { Location = new Point(x, 60), Width = 34, Text = PartNumbering.Letter(_settings, k) };
+                adv.Controls.Add(_letters[i]);
+                x += 34 + 14;
+                _letters[i].TextChanged += (s, e) => { SaveSettings(); Refill(); };
+            }
+
+            _defaults.Location = new Point(fx, 94);
+            adv.Controls.Add(_defaults);
+            adv.Controls.Add(Caption("pattern, levels, order number and type letters back to the standard", fx + 98, 95, 420));
+
+            void Fold()
+            {
+                adv.Visible = _settings.NumberSettingsOpen;
+                header.Text = (_settings.NumberSettingsOpen ? "▾  " : "▸  ") + "Settings";
+                top.Height = _settings.NumberSettingsOpen ? 266 : 132;
+            }
+            header.Click += (s, e) => { _settings.NumberSettingsOpen = !_settings.NumberSettingsOpen; _settings.Save(); Fold(); };
+            Fold();
+            ShowOrder();
+
+            _reset.CheckedChanged += (s, e) => { SaveSettings(); Refill(); };
             _pattern.TextChanged += (s, e) => { SaveSettings(); Refill(); };
             _digits.TextChanged += (s, e) => { SaveSettings(); Refill(); };
             _levels.TextChanged += (s, e) => { SaveSettings(); Refill(); };
             _props.TextChanged += (s, e) => { SaveSettings(); _current.Clear(); Refill(); };
             _keep.CheckedChanged += (s, e) => { SaveSettings(); Refill(); };
+            _orderProp.TextChanged += (s, e) => { SaveSettings(); ReadOrder(); Refill(); };
             _propsMenu.Click += (s, e) => PropsMenu();
+            _orderPropMenu.Click += (s, e) => OrderPropMenu();
+            _defaults.Click += (s, e) => Defaults();
             return top;
+        }
+
+        /// <summary>The order number again from the chosen iProperty of the main assembly (of the first model that has one).</summary>
+        private void ReadOrder()
+        {
+            string prop = _settings.OrderProperty;
+            IEnumerable<DocNode> tops = _root.Doc != null ? new[] { _root } : _root.Children.Where(c => c.Doc != null);
+            string v = tops.Select(t => Props.Get(t.Doc, prop)).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            if (v != null) _order = v;
+            ShowOrder();
+        }
+
+        private void ShowOrder() =>
+            _orderInfo.Text = Naming.Digits(_order).Length > 0 ? "of " + Naming.Digits(_order) + " (0 = all digits)" : "no order number in " + _settings.OrderProperty;
+
+        /// <summary>Pattern, levels, order number iProperty and digits, and type letters back to the standard.</summary>
+        private void Defaults()
+        {
+            var d = new AppSettings();
+            _settings.TypeLetters = new Dictionary<string, string>();
+            _pattern.Text = d.NumberPattern;
+            _levels.Text = d.NumberLevels.ToString();
+            _digits.Text = d.NumberOrderDigits.ToString();
+            _orderProp.Text = d.OrderProperty;
+            for (int i = 0; i < DocKinds.All.Length; i++) _letters[i].Text = PartNumbering.DefaultLetter(DocKinds.All[i]);
+            SaveSettings();
+            ReadOrder();
+            Refill();
+        }
+
+        private void OrderPropMenu()
+        {
+            var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (DocNode n in _nodes.Where(n => n.Doc != null)) foreach (string p in Props.CustomNames(n.Doc)) names.Add(p);
+            names.ExceptWith(Standard);
+            string cur = _orderProp.Text.Trim();
+            var menu = new ThemedMenu(_theme) { ShowCheckMargin = true };
+            void Item(string name)
+            {
+                var item = new ToolStripMenuItem(name) { Checked = string.Equals(cur, name, StringComparison.OrdinalIgnoreCase) };
+                item.Click += (s, e) => _orderProp.Text = name;
+                menu.Items.Add(item);
+            }
+            foreach (string n in names) Item(n);
+            if (names.Count > 0) menu.Items.Add(new ToolStripSeparator());
+            foreach (string n in Standard) Item(n);
+            menu.Show(_orderPropMenu, new Point(0, _orderPropMenu.Height));
         }
 
         private Control BuildBottom()
@@ -271,6 +356,7 @@ namespace AutoDraw.UI
             _settings.NumberKeepExisting = _keep.Checked;
             if (int.TryParse(_levels.Text.Trim(), out int lv) && lv >= 1 && lv <= 6) _settings.NumberLevels = lv;
             _settings.NumberResetSkipped = _reset.Checked;
+            if (_orderProp.Text.Trim().Length > 0) _settings.OrderProperty = _orderProp.Text.Trim();
             _settings.TypeLetters = new Dictionary<string, string>();
             for (int i = 0; i < DocKinds.All.Length; i++)
                 if (_letters[i] != null) _settings.TypeLetters[DocKinds.All[i].ToString()] = _letters[i].Text.Trim();

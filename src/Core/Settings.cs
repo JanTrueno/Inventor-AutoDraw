@@ -55,6 +55,8 @@ namespace AutoDraw.Core
         public int NumberLevels { get; set; } = 3;
         /// <summary>Unticked documents that carry a number of this order get their file name back (Inventor's default part number).</summary>
         public bool NumberResetSkipped { get; set; }
+        /// <summary>The Settings part of the Numbering window is unfolded.</summary>
+        public bool NumberSettingsOpen { get; set; }
         public int NumberWindowW { get; set; } = 960;
         public int NumberWindowH { get; set; } = 680;
 

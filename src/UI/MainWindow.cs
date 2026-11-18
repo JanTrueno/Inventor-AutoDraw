@@ -41,6 +41,8 @@ namespace AutoDraw.UI
         private readonly FieldBox _template;
         private readonly FieldBox _large;
         private readonly FieldBox _drawingOrder;
+        private readonly FieldBox _orderProp;
+        private Label _orderCaption;
         private readonly FieldBox _sheetName;
         private readonly FieldBox _rules;
         private readonly ThemedCombo _up;
@@ -127,6 +129,7 @@ namespace AutoDraw.UI
             _template = new FieldBox(_theme) { Dock = DockStyle.Fill, Hint = "Choose an .idw template" };
             _large = new FieldBox(_theme) { Dock = DockStyle.Top };
             _drawingOrder = new FieldBox(_theme) { Hint = "e.g. ordernummer (empty: none)" };
+            _orderProp = new FieldBox(_theme) { Hint = "e.g. ordernummer" };
             _sheetName = new FieldBox(_theme) { Hint = "e.g. Part Number (empty: file name)" };
             _rules = new FieldBox(_theme) { Hint = "external rule names, separated by ;" };
             _up = new ThemedCombo(_theme);
@@ -160,6 +163,14 @@ namespace AutoDraw.UI
             };
             _drawingOrder.Text = _settings.DrawingOrderProperty;
             _drawingOrder.TextChanged += (s, e) => { _settings.DrawingOrderProperty = _drawingOrder.Text.Trim(); _settings.Save(); };
+            _orderProp.Text = _settings.OrderProperty;
+            _orderProp.TextChanged += (s, e) =>
+            {
+                if (_orderProp.Text.Trim().Length == 0) return;
+                _settings.OrderProperty = _orderProp.Text.Trim();
+                _settings.Save();
+                ReadOrder();
+            };
             _sheetName.Text = _settings.SheetNameProperty;
             _sheetName.TextChanged += (s, e) => { _settings.SheetNameProperty = _sheetName.Text.Trim(); _settings.Save(); };
             _rules.Text = string.Join("; ", _settings.DrawingRules);
@@ -195,7 +206,8 @@ namespace AutoDraw.UI
             _title.ForeColor = _theme.Text; _title.TextAlign = ContentAlignment.MiddleLeft; _title.AutoEllipsis = true;
             stack.Controls.Add(_title);
 
-            stack.Controls.Add(Caption("Order number (ordernummer)", w));
+            _orderCaption = Caption("Order number (" + _settings.OrderProperty + ")", w);
+            stack.Controls.Add(_orderCaption);
             _order.Width = w; _order.Dock = DockStyle.None;
             stack.Controls.Add(_order);
 
@@ -259,6 +271,9 @@ namespace AutoDraw.UI
             _up.Width = w;
             more.Controls.Add(_up);
 
+            more.Controls.Add(Caption("Order number from iProperty (of the main assembly)", w));
+            more.Controls.Add(PropField(_orderProp, w, "ordernummer (default)", "ordernummer"));
+
             more.Controls.Add(Caption("Order number also into drawing iProperty", w));
             more.Controls.Add(PropField(_drawingOrder, w, "(none)"));
 
@@ -288,18 +303,18 @@ namespace AutoDraw.UI
         }
 
         /// <summary>An iProperty field with a … button that lists the standard iProperties and the custom ones in use.</summary>
-        private Control PropField(FieldBox field, int w, string noneText)
+        private Control PropField(FieldBox field, int w, string noneText, string noneValue = "")
         {
             var panel = new Panel { Size = new Size(w, 22), BackColor = _theme.Back };
             field.Dock = DockStyle.Fill;
             var pick = new InventorButton(_theme, "…", false) { Size = new Size(30, 22), Dock = DockStyle.Right };
-            pick.Click += (s, e) => PropMenu(field, pick, noneText);
+            pick.Click += (s, e) => PropMenu(field, pick, noneText, noneValue);
             panel.Controls.Add(field);
             panel.Controls.Add(pick);
             return panel;
         }
 
-        private void PropMenu(FieldBox field, Control at, string noneText)
+        private void PropMenu(FieldBox field, Control at, string noneText, string noneValue)
         {
             var custom = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (DocNode n in _all.Where(n => n.Doc != null && !n.IsContentCenter)) foreach (string p in Props.CustomNames(n.Doc)) custom.Add(p);
@@ -315,7 +330,7 @@ namespace AutoDraw.UI
                 menu.Items.Add(item);
             }
             void Header(string text) => menu.Items.Add(new ToolStripMenuItem(text) { Enabled = false });
-            Item(noneText, "");
+            Item(noneText, noneValue);
             menu.Items.Add(new ToolStripSeparator());
             Header("Standard");
             foreach (string p in NumberingWindow.Standard) Item(p, p);
@@ -586,6 +601,16 @@ namespace AutoDraw.UI
                 " Tick Redo to make a sheet again.";
         }
 
+        /// <summary>The order number again from the chosen iProperty of the models (the first that has one).</summary>
+        private void ReadOrder()
+        {
+            _orderCaption.Text = "Order number (" + _settings.OrderProperty + ")";
+            if (_orderProp.Text.Trim() != _settings.OrderProperty) _orderProp.Text = _settings.OrderProperty;
+            string v = _models.Select(a => Props.Get(a, _settings.OrderProperty)).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            if (v != null) _order.Text = v;
+            CheckOrder();
+        }
+
         private string CheckOrder()
         {
             string problem = Naming.OrderProblem(_order.Text, _settings);
@@ -705,9 +730,11 @@ namespace AutoDraw.UI
             if (_busy || _reader == null) return;
             _grid.EndEdit();
             if (!CheckOut(_all.Where(n => n.Checked || n.Edited.Count > 0))) return;
+            string orderProp = _settings.OrderProperty;
             using (var w = new NumberingWindow(_app, _theme, _settings, _reader.Root, _order.Text))
             {
                 w.ShowDialog(this);
+                if (!string.Equals(orderProp, _settings.OrderProperty, StringComparison.OrdinalIgnoreCase)) ReadOrder();
                 if (!w.Applied) return;
             }
             ReadPartNumbers();
