@@ -124,7 +124,7 @@ namespace AutoDraw.UI
             for (int i = 0; i < DocKinds.All.Length; i++)
             {
                 DocKind k = DocKinds.All[i];
-                string label = k == DocKind.SheetMetalFolded ? "Folded" : k == DocKind.SheetMetalFlat ? "Flat" : k == DocKind.Tube ? "Tube" : DocKinds.Label(k);
+                string label = k == DocKind.Tube ? "Tube" : DocKinds.Label(k);
                 Label l = Caption(label, x, 102, TextRenderer.MeasureText(label, Font).Width + 4);
                 top.Controls.Add(l);
                 x += l.Width + 2;

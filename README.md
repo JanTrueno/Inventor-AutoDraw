@@ -67,7 +67,7 @@ Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
 
 ```
 1777.000.000-S   main assembly
-1777.000.001-Z   folded part directly in the main assembly
+1777.000.001-Z   bent part directly in the main assembly
 1777.100.000-S   sub-assembly            (100 … 900)
 1777.100.001-P   flat part in it
 1777.110.000-S   sub-sub-assembly        (110 … 190)
@@ -77,7 +77,7 @@ Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
 
 - `{order}` – the last digits of the order number (4 by default, 0 = all), `{asm}` – assembly code, `{seq}` – 000 for
   the assembly itself, then 001, 002 … in tree order, `{type}` – type letter, `{name}` – file name.
-- Type letters (configurable): S assembly, Z folded, P flat, D lathe, B tube, G general.
+- Type letters (configurable): S assembly, Z bent, P flat, D lathe, B tube, G general.
 - **Assembly levels** (1–6, default 3) sets how many sub-assembly levels get a code of their own; `{asm}` has as many
   digits. With 4: `1000` … `9000`, `1100` … `1900`, `1110` … `1190`, `1111` … `1119`.
 - Deeper assemblies, or a tenth one on a level, are numbered inside the assembly above them.
@@ -113,7 +113,7 @@ remembers it).
 
 ## Sheets
 
-Order: main assembly → sub-assemblies → sheet metal folded → sheet metal flat → lathe parts → tubes → general,
+Order: main assembly → sub-assemblies → bent → flat → lathe parts → tubes → general,
 by part number within each type (the file name when it has none). Content Center parts are in a closed, unticked
 group at the bottom.
 
@@ -121,9 +121,9 @@ group at the bottom.
 |---|---|
 | Assembly (≤ 15 rows) | front, top, side, iso with balloons, parts list on the title block, overall dimensions |
 | Assembly (> 15 rows) | sheet 1: iso + parts list + balloons; sheet 2: front/top/side with overall dimensions; sheets 3+: one front view |
-| Sheet metal folded | folded front/top/side + iso, flat pattern with edge view: overall, chain bend dimensions, bend notes, hole notes |
-| Sheet metal flat | flat pattern + edge view (thickness), overall dimensions, hole notes |
-| Lathe part | side view with the axis horizontal, end view, iso; length and Ø |
+| Bent (sheet metal with bends) | bent front/top/side + iso, flat pattern with edge view: overall, chain bend dimensions, bend notes, hole notes |
+| Flat (sheet metal without bends) | flat pattern + edge view (thickness), overall dimensions, hole notes |
+| Lathe | side view with the axis horizontal, end view, iso; length and Ø |
 | Tube / profile | long view, end view, iso; length and profile size (Ø for round tubes) |
 | General | front, top, side, iso; overall dimensions |
 

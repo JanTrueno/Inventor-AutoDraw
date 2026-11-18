@@ -472,19 +472,8 @@ namespace AutoDraw.UI
             SetStatus(DocKinds.Label(k) + (on ? " on: " : " off: ") + changed + " document(s) " + (on ? "ticked" : "unticked") + ". " + _status.Text, false);
         }
 
-        /// <summary>Short type names for the ticks (the half-width boxes have no room for "Sheet metal folded").</summary>
-        private static string ShortLabel(DocKind k)
-        {
-            switch (k)
-            {
-                case DocKind.Assembly: return "Assemblies";
-                case DocKind.SheetMetalFolded: return "Folded";
-                case DocKind.SheetMetalFlat: return "Flat";
-                case DocKind.Lathe: return "Lathe";
-                case DocKind.Tube: return "Tube / profile";
-                default: return "General";
-            }
-        }
+        /// <summary>The type names for the ticks.</summary>
+        private static string ShortLabel(DocKind k) => k == DocKind.Assembly ? "Assemblies" : DocKinds.Label(k);
 
         /// <summary>The type ticks with the number of documents of each type.</summary>
         private void ShowTypeCounts()
