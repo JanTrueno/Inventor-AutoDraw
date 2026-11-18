@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using Inventor;
 using Path = System.IO.Path;
 using File = System.IO.File;
+using Environment = System.Environment;
 
 namespace AutoDrawDev
 {
@@ -17,6 +18,7 @@ namespace AutoDrawDev
     /// </summary>
     [ComVisible(true)]
     [Guid(ClientId)]
+    [ProgId("AutoDrawDev.DevServer")]
     public class DevServer : ApplicationAddInServer
     {
         public const string ClientId = "5d2b8f0e-7c41-4e8a-9b6a-2f3c1d9e7a10";
@@ -30,7 +32,25 @@ namespace AutoDrawDev
 
         public object Automation => null;
 
+        private static void Log(string text)
+        {
+            try
+            {
+                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AutoDrawDev");
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "log.txt"), DateTime.Now.ToString("HH:mm:ss ") + text + Environment.NewLine);
+            }
+            catch { }
+        }
+
         public void Activate(ApplicationAddInSite site, bool firstTime)
+        {
+            Log("Activate");
+            try { Start(site); }
+            catch (Exception ex) { Log(ex.ToString()); throw; }
+        }
+
+        private void Start(ApplicationAddInSite site)
         {
             _app = site.Application;
             _button = _app.CommandManager.ControlDefinitions.AddButtonDefinition("AutoDraw dev", "AutoDraw.Dev.Start",

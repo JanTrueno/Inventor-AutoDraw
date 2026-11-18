@@ -31,6 +31,7 @@ internal static class Probe
         if (args[0] == "panes") return Panes(app, args[1]);
         if (args[0] == "newsheet") return NewSheet(app, args[1], args[2]);
         if (args[0] == "commands") return Commands(app, args[1]);
+        if (args[0] == "activate") { var ai = app.ApplicationAddIns.ItemById[args[1]]; try { ai.Activate(); Console.WriteLine("active=" + ai.Activated); } catch (Exception ex) { Console.WriteLine(ex); } return 0; }
         return 1;
     }
 
