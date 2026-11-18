@@ -196,7 +196,7 @@ namespace AutoDraw.UI
                 cell.Style.Font = _changedFont;
                 cell.Style.ForeColor = _theme.Link;
                 cell.Style.SelectionForeColor = _theme.Link;
-                cell.ToolTipText = tip + ". Delete puts it back.";
+                cell.ToolTipText = tip + ". Delete or right-click puts it back.";
             }
             else if (cell.Style.Font != null || cell.ToolTipText.Length > 0)
             {
@@ -342,6 +342,13 @@ namespace AutoDraw.UI
 
         protected override void OnCellMouseDown(DataGridViewCellMouseEventArgs e)
         {
+            if (e.Button == MouseButtons.Right && e.RowIndex >= 0 && e.ColumnIndex >= 0 && Rows[e.RowIndex].Tag is DocNode rn && !rn.IsGroup && !rn.IsVirtual)
+            {
+                EndEdit();
+                try { CurrentCell = Rows[e.RowIndex].Cells[e.ColumnIndex]; } catch { }
+                ResetMenu(Rows[e.RowIndex].Cells[e.ColumnIndex], rn);
+                return;
+            }
             if (e.RowIndex >= 0 && e.ColumnIndex == Columns[ColName].Index && e.Button == MouseButtons.Left && Rows[e.RowIndex].Tag is DocNode n)
             {
                 Rectangle cell = GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
@@ -363,6 +370,54 @@ namespace AutoDraw.UI
                 n.Expanded = !n.Expanded;
                 Rebuild();
             }
+        }
+
+        // ----- putting changed values back ------------------------------------------------------------------------------
+
+        private static bool Changed(DocNode n) => n.KindOverride != null || n.QuantityText != null || n.SheetsOverride != null || n.Edited.Count > 0;
+
+        private IEnumerable<DocNode> AllNodes() =>
+            _root == null ? Enumerable.Empty<DocNode>() : new[] { _root }.Concat(_root.Descendants()).Where(n => !n.IsGroup && !n.IsVirtual);
+
+        private static void ResetNode(DocNode n)
+        {
+            n.KindOverride = null;
+            n.QuantityText = null;
+            n.SheetsOverride = null;
+            n.Edited.Clear();
+        }
+
+        /// <summary>Right-click on a cell: put this value, this row or every change back.</summary>
+        private void ResetMenu(DataGridViewCell cell, DocNode n)
+        {
+            var menu = new ThemedMenu(_theme);
+            string column = cell.OwningColumn.HeaderText;
+            bool cellChanged = cell.Style.Font != null;   // marked as changed by Fill
+            var one = new ToolStripMenuItem("Reset " + column) { Enabled = cellChanged };
+            one.Click += (s, e) => ResetCell(cell);
+            var row = new ToolStripMenuItem("Reset all changes of " + n.Name) { Enabled = Changed(n) };
+            row.Click += (s, e) => { ResetNode(n); AfterReset(); };
+            int count = AllNodes().Count(Changed);
+            var all = new ToolStripMenuItem("Reset all changes in the tree" + (count > 0 ? " (" + count + " documents)" : "")) { Enabled = count > 0 };
+            all.Click += (s, e) =>
+            {
+                if (MessageBox.Show(FindForm(), "Put back every value changed by hand (" + count + " documents)?", "AutoDraw",
+                    MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+                foreach (DocNode d in AllNodes()) ResetNode(d);
+                AfterReset();
+            };
+            menu.Items.Add(one);
+            menu.Items.Add(row);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(all);
+            menu.Show(this, PointToClient(Cursor.Position));
+        }
+
+        private void AfterReset()
+        {
+            if (_root != null) StructureReader.SortChildren(_root);
+            Rebuild();
+            PlanChanged?.Invoke();
         }
 
         /// <summary>Puts a value changed by hand back (Delete on the cell).</summary>
