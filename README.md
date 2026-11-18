@@ -10,6 +10,7 @@ part type, parts lists with balloons, overall dimensions and, on flat patterns, 
 3. Check the **order number** (`ordernummer` iProperty of the assembly) and choose the **drawing template** once.
 4. In the tree: tick the documents that get a sheet, change a detected **Type** if it is wrong, edit **Aantal**, the
    **Sheets** of an assembly or any added iProperty column (**Columns…**).
+   Values changed by hand are bold and coloured, with the original as tooltip; **Delete** on such a cell puts it back.
 5. **Generate drawing**. The drawing is saved next to the assembly as `<ordernummer>_<assembly>_<y-M-d>.idw`
    (`_2`, `_3` … when that name is taken) and opened.
 

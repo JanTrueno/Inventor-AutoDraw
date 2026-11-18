@@ -171,10 +171,40 @@ namespace AutoDraw.UI
                 if (DrawingMode) r.Cells[ColRedo].Value = n.Redo;
                 r.Cells[ColMaterial].Value = n.Material;
                 foreach (string p in _extra) r.Cells[ExtraPrefix + p].Value = PropValue(n, p);
+
+                // values changed by hand: bold, in the link colour, with the original as tooltip
+                Mark(r.Cells[ColKind], n.KindOverride != null, "Changed; detected: " + DocKinds.Label(n.Detected));
+                Mark(r.Cells[ColQty], n.QuantityText != null, "Changed; from the structure: " + n.Quantity);
+                Mark(r.Cells[ColSheets], n.IsAssembly && n.SheetsOverride != null,
+                    "Changed; default: " + (n.OwnRows > LargeLimit() ? 2 : 1) + (DrawingMode ? " (or as in the drawing)" : ""));
+                foreach (string p in _extra)
+                    Mark(r.Cells[ExtraPrefix + p], n.Edited.ContainsKey(p),
+                        "Changed; in the file: " + (_propCache.TryGetValue((n, p), out string f) && f.Length > 0 ? f : "(empty)"));
                 r.Cells[ColStatus].Value = n.Status;
                 r.Cells[ColStatus].Style.ForeColor = n.StatusBad ? Color.FromArgb(230, 90, 80) : _theme.Dim;
             }
             finally { _filling = was; }
+        }
+
+        private Font _changedFont;
+
+        private void Mark(DataGridViewCell cell, bool changed, string tip)
+        {
+            if (changed)
+            {
+                _changedFont = _changedFont ?? new Font(Font, FontStyle.Bold);
+                cell.Style.Font = _changedFont;
+                cell.Style.ForeColor = _theme.Link;
+                cell.Style.SelectionForeColor = _theme.Link;
+                cell.ToolTipText = tip + ". Delete puts it back.";
+            }
+            else if (cell.Style.Font != null || cell.ToolTipText.Length > 0)
+            {
+                cell.Style.Font = null;
+                cell.Style.ForeColor = Color.Empty;
+                cell.Style.SelectionForeColor = Color.Empty;
+                cell.ToolTipText = "";
+            }
         }
 
         public void RefreshValues()
@@ -335,8 +365,29 @@ namespace AutoDraw.UI
             }
         }
 
+        /// <summary>Puts a value changed by hand back (Delete on the cell).</summary>
+        private bool ResetCell(DataGridViewCell cell)
+        {
+            if (cell == null || !(cell.OwningRow.Tag is DocNode n) || n.IsGroup || n.IsVirtual) return false;
+            string col = cell.OwningColumn.Name;
+            if (col == ColKind && n.KindOverride != null)
+            {
+                n.KindOverride = null;
+                if (n.Parent != null) StructureReader.SortChildren(n.Parent);
+                Rebuild();
+            }
+            else if (col == ColQty && n.QuantityText != null) n.QuantityText = null;
+            else if (col == ColSheets && n.SheetsOverride != null) n.SheetsOverride = null;
+            else if (col.StartsWith(ExtraPrefix) && n.Edited.Remove(col.Substring(ExtraPrefix.Length))) { }
+            else return false;
+            Fill(cell.OwningRow);
+            PlanChanged?.Invoke();
+            return true;
+        }
+
         protected override void OnKeyDown(KeyEventArgs e)
         {
+            if (e.KeyCode == Keys.Delete && !IsCurrentCellInEditMode && ResetCell(CurrentCell)) { e.Handled = true; return; }
             if (e.KeyCode == Keys.Space && !IsCurrentCellInEditMode && SelectedNode != null)
             {
                 Toggle(SelectedNode);
