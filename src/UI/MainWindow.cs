@@ -253,7 +253,7 @@ namespace AutoDraw.UI
             more.Controls.Add(_rules);
             Fold();
 
-            _thumb.Size = new Size(w, 190); _thumb.SizeMode = PictureBoxSizeMode.Zoom; _thumb.BackColor = _theme.Field;
+            _thumb.Size = new Size(w, w);   // square, like the thumbnails _thumb.SizeMode = PictureBoxSizeMode.Zoom; _thumb.BackColor = _theme.Field;
             _thumb.Margin = new Padding(0, 14, 0, 6);
             stack.Controls.Add(_thumb);
             _info.AutoSize = false; _info.Size = new Size(w, 120); _info.ForeColor = _theme.Text;
