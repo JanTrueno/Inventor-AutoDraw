@@ -89,7 +89,8 @@ Default pattern `{order}.{asm}.{seq}-{type}`, e.g. for order 160261777:
 
 ## Settings in the window
 
-The settings below are folded away under **▸ Settings** (click to unfold; the window remembers it).
+The settings below are folded away under **▸ Settings** at the bottom of the left panel (click to unfold; the window
+remembers it).
 
 - **Columns…** – iProperty columns in the tree.
 - The iProperty fields have a **…** list of the standard iProperties and the custom ones in the documents; typing a

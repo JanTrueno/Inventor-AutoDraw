@@ -221,9 +221,13 @@ namespace AutoDraw.UI
                 BackColor = _theme.Back, Margin = new Padding(0)
             };
             void Fold() { more.Visible = _settings.SettingsOpen; header.Text = (_settings.SettingsOpen ? "▾  " : "▸  ") + "Settings"; }
-            header.Click += (s, e) => { _settings.SettingsOpen = !_settings.SettingsOpen; _settings.Save(); Fold(); };
-            stack.Controls.Add(header);
-            stack.Controls.Add(more);
+            header.Click += (s, e) =>
+            {
+                _settings.SettingsOpen = !_settings.SettingsOpen;
+                _settings.Save();
+                Fold();
+                if (more.Visible && more.Controls.Count > 0) stack.ScrollControlIntoView(more.Controls[more.Controls.Count - 1]);
+            };
 
             var setButtons = new FlowLayoutPanel { Size = new Size(w, 32), BackColor = _theme.Back, Margin = new Padding(0, 4, 0, 0) };
             setButtons.Controls.Add(_columns);
@@ -259,6 +263,10 @@ namespace AutoDraw.UI
                 "they are written to the files when the drawing is made. Models… adds more assemblies or loose parts to the drawing.", w);
             help.Size = new Size(w, 86);
             stack.Controls.Add(help);
+
+            // Settings at the bottom
+            stack.Controls.Add(header);
+            stack.Controls.Add(more);
             return left;
         }
 
