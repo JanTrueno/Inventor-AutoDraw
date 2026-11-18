@@ -31,6 +31,7 @@ internal static class Probe
         if (args[0] == "panes") return Panes(app, args[1]);
         if (args[0] == "newsheet") return NewSheet(app, args[1], args[2]);
         if (args[0] == "commands") return Commands(app, args[1]);
+        if (args[0] == "find") return Find(app, args[1]);
         if (args[0] == "activate") { var ai = app.ApplicationAddIns.ItemById[args[1]]; try { ai.Activate(); Console.WriteLine("active=" + ai.Activated); } catch (Exception ex) { Console.WriteLine(ex); } return 0; }
         return 1;
     }
@@ -267,6 +268,30 @@ internal static class Probe
     {
         try { f(); Console.WriteLine("   OK    " + what); }
         catch (Exception ex) { Console.WriteLine("   FAIL  " + what + ": " + ex.Message); }
+    }
+
+    // documents open in Inventor (visible or not) whose name contains the text: type, bodies, sheet metal data, size
+    private static int Find(Inventor.Application app, string text)
+    {
+        foreach (Document d in app.Documents)
+        {
+            if ((d.DisplayName ?? "").IndexOf(text, StringComparison.OrdinalIgnoreCase) < 0 && (d.FullFileName ?? "").IndexOf(text, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            Console.WriteLine(d.FullFileName + "  type=" + d.DocumentType + "  subtype=" + d.SubType);
+            if (d is PartDocument p)
+            {
+                var def = p.ComponentDefinition;
+                int bodies = 0, faces = 0;
+                foreach (SurfaceBody b in def.SurfaceBodies) { bodies++; faces += b.Faces.Count; Console.WriteLine("  body " + b.Name + " solid=" + b.IsSolid + " faces=" + b.Faces.Count); }
+                Console.WriteLine("  bodies=" + bodies + " faces=" + faces + " features=" + def.Features.Count + " range=" + B(def.RangeBox));
+                if (def is SheetMetalComponentDefinition sm)
+                {
+                    try { Console.WriteLine("  bends=" + sm.Bends.Count + " hasFlat=" + sm.HasFlatPattern + " thickness=" + sm.Thickness.Value); } catch (Exception ex) { Console.WriteLine("  sm " + ex.Message); }
+                    try { foreach (Bend bd in sm.Bends) Console.WriteLine("   bend front faces " + bd.FrontFaces.Count + " back faces " + bd.BackFaces.Count); } catch (Exception ex) { Console.WriteLine("   bends " + ex.Message); }
+                    try { foreach (PartFeature f in sm.Features) Console.WriteLine("   feature " + f.Name + " " + f.Type + " suppressed=" + f.Suppressed); } catch { }
+                }
+            }
+        }
+        return 0;
     }
 
     private static int Part(Inventor.Application app, string path)

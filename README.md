@@ -128,6 +128,9 @@ group at the bottom.
 | Tube / profile | long view, end view, iso; length and profile size (Ø for round tubes) |
 | General | front, top, side, iso; overall dimensions |
 
+Empty documents (a part without bodies, an assembly without components) are unticked with the status "empty". Sheet
+metal is one solid: a sheet metal file with several solids (e.g. an imported STEP of a bought part) is General.
+
 Scales are standard scales picked to fit; the sheet size comes from the template.
 
 ## Install

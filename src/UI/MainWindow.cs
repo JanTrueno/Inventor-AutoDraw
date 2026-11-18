@@ -443,7 +443,7 @@ namespace AutoDraw.UI
                     n.Expanded = p.Expanded;
                     foreach (KeyValuePair<string, string> kv in p.Edited) n.Edited[kv.Key] = kv.Value;
                 }
-                else n.Checked = !n.IsContentCenter && !_settings.Skips(n.Kind);
+                else n.Checked = !n.IsContentCenter && !n.IsEmpty && !_settings.Skips(n.Kind);
             }
         }
 
@@ -573,7 +573,7 @@ namespace AutoDraw.UI
                     if (c != n.SheetCount(_settings.LargeAssemblyRows)) n.SheetsOverride = c;
                 }
                 if (keepErrors && n.StatusBad) continue;
-                n.Status = c > 0 || n.IsContentCenter ? "" : "no sheet yet";
+                n.Status = n.IsEmpty ? n.EmptyText : c > 0 || n.IsContentCenter ? "" : "no sheet yet";
                 n.StatusBad = false;
             }
             if (_reader?.ContentGroup != null) _reader.ContentGroup.Expanded = _reader.ContentGroup.Children.Any(c => c.Checked);
@@ -742,7 +742,7 @@ namespace AutoDraw.UI
             List<SheetJob> jobs = SheetPlan.Number(_all, _settings.LargeAssemblyRows);
             if (jobs.Count == 0) { SetStatus("Tick at least one document.", true); return; }
             if (!CheckOut(jobs.Select(j => j.Node).Concat(_all.Where(n => n.Edited.Count > 0)))) { SetStatus("Cancelled.", false); return; }
-            foreach (DocNode n in _all) { n.Status = ""; n.StatusBad = false; }
+            foreach (DocNode n in _all) { n.Status = n.IsEmpty ? n.EmptyText : ""; n.StatusBad = false; }
 
             string path = null;
             DrawingBuilder builder = RunBuilder(jobs.Count, "Generating", (b, status, cancelled) =>
@@ -786,7 +786,7 @@ namespace AutoDraw.UI
                 if (r == DialogResult.Cancel) return;
                 deleteOthers = r == DialogResult.Yes;
             }
-            foreach (DocNode n in _all) { n.Status = ""; n.StatusBad = false; }
+            foreach (DocNode n in _all) { n.Status = n.IsEmpty ? n.EmptyText : ""; n.StatusBad = false; }
 
             int toMake = jobs.Count(j => j.Node.Redo || j.Node.SheetsInDrawing != j.Parts);
             bool ran = false;

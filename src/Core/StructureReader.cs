@@ -58,7 +58,7 @@ namespace AutoDraw.Core
 
             foreach (DocNode n in _nodes.Values.Where(n => n != Root))
             {
-                n.Checked = !n.IsContentCenter;
+                n.Checked = !n.IsContentCenter && !n.IsEmpty;
                 n.Expanded = true;
             }
             Quantities.Compute(_nodes.Values.Append(Root));
@@ -144,7 +144,9 @@ namespace AutoDraw.Core
                 try { n.IsContentCenter = part.ComponentDefinition.IsContentMember; } catch { }
             }
             n.Material = n.IsAssembly ? "" : Props.Material(doc);
-            if (!n.IsAssembly && !n.IsContentCenter)
+            n.IsEmpty = !n.IsContentCenter && KindDetector.IsEmpty(doc);
+            if (n.IsEmpty) n.Status = n.EmptyText;
+            if (!n.IsAssembly && !n.IsContentCenter && !n.IsEmpty)
             {
                 try { n.Detected = KindDetector.Detect(doc); }
                 catch (Exception ex) { Log.Write("Detecting " + n.Name + " failed: " + ex.Message); }

@@ -55,6 +55,9 @@ namespace AutoDraw.Core
         public bool IsAssembly;
         public bool IsContentCenter;
         public bool IsGroup;             // the "Content Center" group row, not a document
+        /// <summary>A part without bodies or an assembly without components: unticked, nothing to draw.</summary>
+        public bool IsEmpty;
+        public string EmptyText => IsAssembly ? "empty: no components" : "empty: no bodies";
         public bool IsMain;              // the main assembly (or the group of several assemblies)
         /// <summary>The top row when several separate assemblies go into one drawing: no document, no sheet.</summary>
         public bool IsVirtual;

@@ -43,7 +43,7 @@ namespace AutoDraw.Core
         public static int TickKind(IEnumerable<DocNode> nodes, DocKind kind, bool on)
         {
             int count = 0;
-            foreach (DocNode n in nodes.Where(n => !n.IsGroup && !n.IsVirtual && !n.IsContentCenter && n.Kind == kind))
+            foreach (DocNode n in nodes.Where(n => !n.IsGroup && !n.IsVirtual && !n.IsContentCenter && !n.IsEmpty && n.Kind == kind))
             {
                 n.Checked = on;
                 count++;

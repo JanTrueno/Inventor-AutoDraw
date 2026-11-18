@@ -16,11 +16,34 @@ namespace AutoDraw.Core
         public const string SheetMetalSubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}";
         private const int MaxFaces = 4000;
 
+        /// <summary>Solid bodies with faces in a part.</summary>
+        public static int SolidCount(PartComponentDefinition def)
+        {
+            int n = 0;
+            try { foreach (SurfaceBody b in def.SurfaceBodies) if (b.Faces.Count > 0) n++; } catch { }
+            return n;
+        }
+
+        /// <summary>A part without bodies, or an assembly without components: nothing to draw.</summary>
+        public static bool IsEmpty(Document doc)
+        {
+            try
+            {
+                if (doc is PartDocument p) return SolidCount(p.ComponentDefinition) == 0;
+                if (doc is AssemblyDocument a) return a.ComponentDefinition.Occurrences.Count == 0;
+            }
+            catch { }
+            return false;
+        }
+
         public static DocKind Detect(Document doc)
         {
             if (!(doc is PartDocument part)) return DocKind.General;
+            int solids = SolidCount(part.ComponentDefinition);
 
-            if (string.Equals(part.SubType, SheetMetalSubType, StringComparison.OrdinalIgnoreCase) &&
+            // sheet metal is one solid; a sheet metal file holding several (e.g. an imported STEP of a bought part, whose
+            // round faces Inventor takes for bends) is not one bent or flat part
+            if (solids == 1 && string.Equals(part.SubType, SheetMetalSubType, StringComparison.OrdinalIgnoreCase) &&
                 part.ComponentDefinition is SheetMetalComponentDefinition sm)
             {
                 int bends = 0;
@@ -29,6 +52,7 @@ namespace AutoDraw.Core
             }
 
             if (IsFrameMember(doc)) return DocKind.Tube;
+            if (solids > 1) return DocKind.General;
 
             Shape shape = Analyse(part.ComponentDefinition);
             if (shape.Plate) return DocKind.SheetMetalFlat;   // a solid plate (round or not) of one thickness: cut like sheet metal
