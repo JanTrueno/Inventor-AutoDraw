@@ -218,7 +218,7 @@ namespace AutoDraw.UI
                 DocKind k = kind;
                 var box = new CheckBox
                 {
-                    Text = DocKinds.Label(k), Size = new Size(w / 2 - 2, 22), Margin = new Padding(0, 0, 2, 2),
+                    Text = ShortLabel(k), Size = new Size(w / 2 - 2, 22), Margin = new Padding(0, 0, 2, 2),
                     ForeColor = _theme.Text, BackColor = _theme.Back, FlatStyle = FlatStyle.Flat, Checked = !_settings.Skips(k)
                 };
                 box.CheckedChanged += (s, e) => { if (!_typesFilling) SwitchType(k, box.Checked); };
@@ -472,6 +472,20 @@ namespace AutoDraw.UI
             SetStatus(DocKinds.Label(k) + (on ? " on: " : " off: ") + changed + " document(s) " + (on ? "ticked" : "unticked") + ". " + _status.Text, false);
         }
 
+        /// <summary>Short type names for the ticks (the half-width boxes have no room for "Sheet metal folded").</summary>
+        private static string ShortLabel(DocKind k)
+        {
+            switch (k)
+            {
+                case DocKind.Assembly: return "Assemblies";
+                case DocKind.SheetMetalFolded: return "Folded";
+                case DocKind.SheetMetalFlat: return "Flat";
+                case DocKind.Lathe: return "Lathe";
+                case DocKind.Tube: return "Tube / profile";
+                default: return "General";
+            }
+        }
+
         /// <summary>The type ticks with the number of documents of each type.</summary>
         private void ShowTypeCounts()
         {
@@ -481,7 +495,7 @@ namespace AutoDraw.UI
                 foreach (KeyValuePair<DocKind, CheckBox> kv in _typeBoxes)
                 {
                     int count = _all.Count(n => !n.IsGroup && !n.IsVirtual && !n.IsContentCenter && n.Kind == kv.Key);
-                    kv.Value.Text = DocKinds.Label(kv.Key) + " (" + count + ")";
+                    kv.Value.Text = ShortLabel(kv.Key) + " (" + count + ")";
                     kv.Value.Checked = !_settings.Skips(kv.Key);
                 }
             }
