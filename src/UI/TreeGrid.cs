@@ -340,8 +340,12 @@ namespace AutoDraw.UI
                 using (var pen = new Pen(_theme.Dim)) g.DrawRectangle(pen, r.X, r.Y, r.Width - 1, r.Height - 1);
         }
 
+        /// <summary>The last left click was on a caret or a tick (handled there): the double click it makes is not a second toggle.</summary>
+        private bool _downHandled;
+
         protected override void OnCellMouseDown(DataGridViewCellMouseEventArgs e)
         {
+            if (e.Button == MouseButtons.Left) _downHandled = false;
             if (e.Button == MouseButtons.Right && e.RowIndex >= 0 && e.ColumnIndex >= 0 && Rows[e.RowIndex].Tag is DocNode rn && !rn.IsGroup && !rn.IsVirtual)
             {
                 EndEdit();
@@ -356,8 +360,8 @@ namespace AutoDraw.UI
                 Rectangle caret = CaretRect(n, cell), box = BoxRect(n, cell);
                 caret.Inflate(3, 4);
                 box.Inflate(3, 4);
-                if (n.Children.Count > 0 && caret.Contains(p)) { n.Expanded = !n.Expanded; Rebuild(); return; }
-                if (box.Contains(p)) { Toggle(n); return; }
+                if (n.Children.Count > 0 && caret.Contains(p)) { _downHandled = true; n.Expanded = !n.Expanded; Rebuild(); return; }
+                if (box.Contains(p)) { _downHandled = true; Toggle(n); return; }
             }
             base.OnCellMouseDown(e);
         }
@@ -365,6 +369,7 @@ namespace AutoDraw.UI
         protected override void OnCellDoubleClick(DataGridViewCellEventArgs e)
         {
             base.OnCellDoubleClick(e);
+            if (_downHandled) return;   // two quick clicks on a caret: each click already opened or closed it
             if (e.RowIndex >= 0 && e.ColumnIndex == Columns[ColName].Index && Rows[e.RowIndex].Tag is DocNode n && n.Children.Count > 0)
             {
                 n.Expanded = !n.Expanded;
