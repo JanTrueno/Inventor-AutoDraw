@@ -200,7 +200,7 @@ namespace AutoDraw.UI
             var left = new Panel { Dock = DockStyle.Left, Width = 300, BackColor = _theme.Back, Padding = new Padding(10, 10, 10, 10) };
             var stack = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, BackColor = _theme.Back };
             left.Controls.Add(stack);
-            int w = 276;
+            int w = 280 - SystemInformation.VerticalScrollBarWidth - 2;   // room for the scroll bar when Settings is open
 
             _title.AutoSize = false; _title.Size = new Size(w, 40); _title.Font = new Font("Segoe UI", 11f, FontStyle.Bold);
             _title.ForeColor = _theme.Text; _title.TextAlign = ContentAlignment.MiddleLeft; _title.AutoEllipsis = true;
@@ -263,7 +263,7 @@ namespace AutoDraw.UI
             setButtons.Controls.Add(_columns);
             more.Controls.Add(setButtons);
 
-            more.Controls.Add(Caption("Two sheets for assemblies with more rows than", w));
+            more.Controls.Add(Caption("Two sheets above this many parts list rows", w));
             _large.Width = 60; _large.Dock = DockStyle.None;
             more.Controls.Add(_large);
 
@@ -271,7 +271,7 @@ namespace AutoDraw.UI
             _up.Width = w;
             more.Controls.Add(_up);
 
-            more.Controls.Add(Caption("Order number from iProperty (of the main assembly)", w));
+            more.Controls.Add(Caption("Order number from iProperty", w));
             more.Controls.Add(PropField(_orderProp, w, "ordernummer (default)", "ordernummer"));
 
             more.Controls.Add(Caption("Order number also into drawing iProperty", w));
@@ -293,7 +293,7 @@ namespace AutoDraw.UI
 
             var help = Caption("Tick the documents that get a sheet. Change the type, Aantal, sheet count or an iProperty in the grid; " +
                 "they are written to the files when the drawing is made. Models… adds more assemblies or loose parts to the drawing.", w);
-            help.Size = new Size(w, 86);
+            help.Size = new Size(w, 104);
             stack.Controls.Add(help);
 
             // Settings at the bottom
@@ -345,7 +345,7 @@ namespace AutoDraw.UI
 
         private Label Caption(string text, int w) => new Label
         {
-            Text = text, AutoSize = false, Size = new Size(w, 22), ForeColor = _theme.Dim, TextAlign = ContentAlignment.BottomLeft,
+            Text = text, AutoSize = false, Size = new Size(w, 22), ForeColor = _theme.Dim, TextAlign = ContentAlignment.BottomLeft, AutoEllipsis = true,
             Margin = new Padding(0, 8, 0, 2)
         };
 
