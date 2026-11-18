@@ -34,26 +34,25 @@ namespace AutoDraw.Core
             {
                 Root = NewNode((Document)assemblies[0]);
                 Root.IsMain = true;
-                Root.Quantity = 1;
-                Walk(assemblies[0].ComponentDefinition, Root, 1, RowsOf(Root));
+                Walk(assemblies[0].ComponentDefinition, Root, RowsOf(Root));
             }
             else
             {
                 Root = new DocNode
                 {
-                    IsMain = true, IsVirtual = true, IsAssembly = true, Quantity = 1, Checked = false,
+                    IsMain = true, IsVirtual = true, IsAssembly = true, Checked = false,
                     Name = Naming.GroupName(assemblies.Select(a => System.IO.Path.GetFileNameWithoutExtension(((Document)a).FullFileName ?? "?")).ToList())
                 };
                 foreach (AssemblyDocument asm in assemblies)
                 {
                     string key = ((Document)asm).FullDocumentName ?? "";
-                    if (_nodes.TryGetValue(key, out DocNode seen)) { if (seen.Parent == Root) seen.Quantity++; continue; }
+                    if (_nodes.TryGetValue(key, out DocNode seen)) { Use(seen, Root); continue; }
                     DocNode node = NewNode((Document)asm);
                     node.Parent = Root;
                     Root.Children.Add(node);
-                    node.Quantity = 1;
+                    Use(node, Root);
                     Root.OwnRows = Root.Children.Count;
-                    Walk(asm.ComponentDefinition, node, 1, RowsOf(node));
+                    Walk(asm.ComponentDefinition, node, RowsOf(node));
                 }
             }
 
@@ -62,6 +61,7 @@ namespace AutoDraw.Core
                 n.Checked = !n.IsContentCenter;
                 n.Expanded = true;
             }
+            Quantities.Compute(_nodes.Values.Append(Root));
             SortChildren(Root);
             ContentGroup.Children.Sort((a, b) => Naming.NaturalCompare(a.Name, b.Name));
             if (ContentGroup.Children.Count > 0)
@@ -72,7 +72,13 @@ namespace AutoDraw.Core
         }
 
         /// <param name="rows">the documents counted as parts list rows of <paramref name="owner"/> so far</param>
-        private void Walk(AssemblyComponentDefinition def, DocNode owner, int multiplier, HashSet<string> rows)
+        private static void Use(DocNode n, DocNode owner) => n.UsedIn[owner] = (n.UsedIn.TryGetValue(owner, out int c) ? c : 0) + 1;
+
+        /// <summary>
+        /// Reads the occurrences of one assembly (each assembly document once; its quantities follow from
+        /// <see cref="DocNode.UsedIn"/>). A phantom assembly is read for every occurrence, into the assembly above it.
+        /// </summary>
+        private void Walk(AssemblyComponentDefinition def, DocNode owner, HashSet<string> rows)
         {
             foreach (ComponentOccurrence occ in def.Occurrences)
             {
@@ -87,23 +93,24 @@ namespace AutoDraw.Core
 
                     if (bom == BOMStructureEnum.kPhantomBOMStructure)
                     {
-                        if (doc is AssemblyDocument phantom) Walk(phantom.ComponentDefinition, owner, multiplier, rows);
+                        if (doc is AssemblyDocument phantom) Walk(phantom.ComponentDefinition, owner, rows);
                         continue;
                     }
 
                     string key = doc.FullDocumentName ?? "";
-                    if (!_nodes.TryGetValue(key, out DocNode node))
+                    bool first = !_nodes.TryGetValue(key, out DocNode node);
+                    if (first)
                     {
                         node = NewNode(doc);
                         if (node.IsContentCenter) { node.Parent = ContentGroup; ContentGroup.Children.Add(node); }
                         else { node.Parent = owner; owner.Children.Add(node); }
                         if (_nodes.Count % 10 == 0) _progress?.Invoke("Reading " + _nodes.Count + " documents…");
                     }
-                    node.Quantity += multiplier;
+                    Use(node, owner);
                     if (rows.Add(key)) owner.OwnRows = rows.Count;
 
-                    if (doc is AssemblyDocument sub)
-                        Walk(sub.ComponentDefinition, node, multiplier, RowsOf(node));
+                    if (first && doc is AssemblyDocument sub)
+                        Walk(sub.ComponentDefinition, node, RowsOf(node));
                 }
                 catch (Exception ex) { Log.Write("Reading occurrence failed: " + ex.Message); }
             }

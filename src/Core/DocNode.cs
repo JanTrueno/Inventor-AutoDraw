@@ -63,8 +63,10 @@ namespace AutoDraw.Core
         public DocKind? KindOverride;
         public DocKind Kind => IsAssembly ? DocKind.Assembly : (KindOverride ?? Detected);
 
-        /// <summary>Total quantity in the main assembly (nested quantities multiplied).</summary>
+        /// <summary>Total quantity in the main assembly (nested quantities multiplied, typed assembly quantities included).</summary>
         public int Quantity;
+        /// <summary>The assemblies this document is used in directly, and how many times in one of each.</summary>
+        public readonly Dictionary<DocNode, int> UsedIn = new Dictionary<DocNode, int>();
         /// <summary>The Aantal value typed in the tree, or null to use <see cref="Quantity"/>.</summary>
         public string QuantityText;
         public string QuantityValue => QuantityText ?? Quantity.ToString();

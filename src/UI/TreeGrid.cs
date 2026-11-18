@@ -234,7 +234,8 @@ namespace AutoDraw.UI
             else if (col == ColQty)
             {
                 n.QuantityText = text.Length == 0 || text == n.Quantity.ToString() ? null : text;
-                BeginInvoke((Action)(() => Fill(r)));
+                // an assembly's quantity changes the quantities of everything in it
+                BeginInvoke((Action)(() => { Fill(r); PlanChanged?.Invoke(); }));
             }
             else if (col == ColSheets)
             {

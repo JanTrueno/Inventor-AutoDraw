@@ -41,7 +41,10 @@ assembly (the one shown on its first sheet); documents with a sheet in the drawi
 
 ## What it writes
 
-- `Aantal` – total quantity of the document in the main assembly (or the value typed in the tree).
+- `Aantal` – total quantity of the document in the main assembly (or the value typed in the tree). An Aantal typed on
+  an assembly carries on below it: main assembly 3 makes every part 3×, a sub-assembly 10 makes its parts 10× their
+  count in it (plus their uses elsewhere). Typed on a part it is only that part's value. The main assembly's Aantal
+  is read back when the window opens again, so the parts stay 3×.
 - `bewerking` and `bewerkingBlad` – the sheet number, `010`.
 - `ordernummer` on the main assembly, and every edited iProperty column.
 - Sheet names are the document names; sheet metal parts without a flat pattern get one.

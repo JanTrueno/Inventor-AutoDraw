@@ -292,6 +292,9 @@ namespace AutoDraw.UI
                     : _asms.Select(a => Props.Get((Document)a, _settings.OrderProperty)).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? "";
                 string drawingText = drawing != null ? ApplyDrawing(false) : null;
                 if (previous != null) Restore(previous, drawing != null);
+                Quantities.Compute(_all);
+                ReadTopQuantities(previous);
+                Quantities.Compute(_all);
                 ReadPartNumbers();
                 SheetPlan.Number(_all, _settings.LargeAssemblyRows);
                 _grid.SetRoot(_reader.Root);
@@ -305,6 +308,22 @@ namespace AutoDraw.UI
                 SetStatus("Reading the assembly failed: " + ex.Message, true);
             }
             finally { Cursor = Cursors.Default; }
+        }
+
+        /// <summary>
+        /// The quantity of the main assembly (of each assembly, when there are several) as AutoDraw wrote it last time:
+        /// a main assembly made 3 times keeps 3 when the window is opened again, so its parts stay ×3.
+        /// </summary>
+        private void ReadTopQuantities(Dictionary<string, DocNode> previous)
+        {
+            DocNode root = _reader.Root;
+            IEnumerable<DocNode> tops = root.IsVirtual ? root.Children.Where(c => !c.IsGroup) : new[] { root };
+            foreach (DocNode t in tops)
+            {
+                if (t.Doc == null || t.QuantityText != null || (previous != null && previous.ContainsKey(t.Key))) continue;
+                if (int.TryParse(Props.Get(t.Doc, _settings.QuantityProperty).Trim(), out int v) && v >= 1 && v != t.Quantity)
+                    t.QuantityText = v.ToString();
+            }
         }
 
         private Dictionary<string, DocNode> Snapshot()
@@ -461,6 +480,7 @@ namespace AutoDraw.UI
 
         private void Renumber()
         {
+            Quantities.Compute(_all);
             string prop = PartNumberProperty;
             bool moved = false;
             foreach (DocNode n in _all)

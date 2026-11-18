@@ -225,6 +225,28 @@ internal static class CoreTests
         List<SheetJob> gjobs = SheetPlan.Number(gnodes, 15);
         Check("separate assemblies: group gets no sheet, both assemblies do", gjobs.All(j => j.Node != group) && gjobs[0].Node.Name == "frameA" && gjobs[1].Node.Name == "frameB",
             string.Join(",", gjobs.Select(j => j.Node.Name)));
+        // quantities: main 3x makes everything 3x; a typed sub-assembly quantity carries on below it
+        DocNode qMain = Node("qmain", DocKind.Assembly, true), qSub = Node("qsub", DocKind.Assembly), qBolt = Node("qbolt", DocKind.General),
+            qPlate = Node("qplate", DocKind.SheetMetalFlat);
+        qSub.UsedIn[qMain] = 2;                     // 2 sub-assemblies in the main
+        qBolt.UsedIn[qSub] = 4; qBolt.UsedIn[qMain] = 1;   // 4 per sub, 1 loose
+        qPlate.UsedIn[qSub] = 1;
+        var qAll = new List<DocNode> { qMain, qSub, qBolt, qPlate };
+        Quantities.Compute(qAll);
+        Check("quantities from the structure", qMain.Quantity == 1 && qSub.Quantity == 2 && qBolt.Quantity == 9 && qPlate.Quantity == 2,
+            qSub.Quantity + "/" + qBolt.Quantity + "/" + qPlate.Quantity);
+        qMain.QuantityText = "3";
+        Quantities.Compute(qAll);
+        Check("main assembly 3x: everything follows", qSub.Quantity == 6 && qBolt.Quantity == 27 && qPlate.Quantity == 6 && qMain.QuantityValue == "3",
+            qSub.Quantity + "/" + qBolt.Quantity + "/" + qPlate.Quantity);
+        qSub.QuantityText = "10";
+        Quantities.Compute(qAll);
+        Check("typed sub-assembly quantity carries on below it", qPlate.Quantity == 10 && qBolt.Quantity == 43 && qSub.QuantityValue == "10",
+            qBolt.Quantity + "/" + qPlate.Quantity);
+        qBolt.QuantityText = "50"; qSub.QuantityText = null;
+        Quantities.Compute(qAll);
+        Check("typed part quantity is only that part", qBolt.QuantityValue == "50" && qPlate.Quantity == 6);
+
         Check("group name", Naming.GroupName(new[] { "frame", "door" }) == "frame+door"
             && Naming.GroupName(new[] { "a long assembly name", "another long assembly", "third" }) == "a long assembly name+2 more");
 
