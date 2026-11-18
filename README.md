@@ -30,6 +30,22 @@ tree gets a top row `A+B+…` without a sheet, with each model under it as if it
 - the drawing remembers its assemblies (custom iProperty `AutoDraw Assemblies`), so **Update drawing** opens for all
   of them again. **Models…** also adds or takes out a model there; ticks, types and typed values are kept.
 
+## Opening from another program, STEP files
+
+**Models… → Add from file…** also takes STEP files, and other programs can open the AutoDraw window for a set of
+files through the add-in's Automation object:
+
+```python
+import win32com.client
+inv = win32com.client.GetActiveObject("Inventor.Application")
+ad = inv.ApplicationAddIns.ItemById("{0091494E-410A-4CC7-BFFC-1248D26C64BD}").Automation
+error = ad.Open(r"C:\x\frame.stp;C:\x\bracket.ipt")     # or a list; "" when the window opened
+```
+
+A STEP opens as the `.iam`/`.ipt` of the same name next to it when there is one (work done on it is kept); otherwise
+it is imported and saved there (an assembly's parts go into a folder named after the STEP).
+`tools\open-in-autodraw.ps1 <files>` does the same from the command line.
+
 ## Vault
 
 Before **Generate drawing**, **Update drawing** and **Numbering…**, AutoDraw looks for files it would write that are
