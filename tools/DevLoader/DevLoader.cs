@@ -29,6 +29,8 @@ namespace AutoDrawDev
         private DevContext _context;
         private Assembly _autoDraw;
         private DateTime _loaded;
+        /// <summary>Made on Inventor's main thread: calls from other programs arrive on a COM worker thread and are handed over.</summary>
+        private Control _ui;
 
         private DevAutomation _automation;
 
@@ -56,6 +58,8 @@ namespace AutoDrawDev
         private void Start(ApplicationAddInSite site)
         {
             _app = site.Application;
+            _ui = new Control();
+            IntPtr uiHandle = _ui.Handle;
             _button = _app.CommandManager.ControlDefinitions.AddButtonDefinition("AutoDraw dev", "AutoDraw.Dev.Start",
                 CommandTypesEnum.kQueryOnlyCmdType, "{" + ClientId + "}", "Runs the latest AutoDraw build (reloaded when rebuilt)",
                 "AutoDraw dev", Type.Missing, Type.Missing, ButtonDisplayEnum.kAlwaysDisplayText);
@@ -127,6 +131,8 @@ namespace AutoDrawDev
         /// <summary>Automation call from another program: forwarded to the latest build's AutoDrawAutomation.</summary>
         internal string Open(object paths)
         {
+            if (_ui != null && _ui.IsHandleCreated && _ui.InvokeRequired)
+                return (string)_ui.Invoke(new Func<string>(() => Open(paths)));
             try
             {
                 EnsureLatest();

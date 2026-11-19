@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
 using AutoDraw.Core;
 using AutoDraw.UI;
 using Inventor;
@@ -36,9 +37,23 @@ namespace AutoDraw
     {
         private readonly Inventor.Application _app;
 
+        /// <summary>
+        /// A control made on Inventor's main thread (by the add-in). Calls from other programs arrive on a COM worker
+        /// thread; a window made there gets no messages and hangs, so the work is handed to the main thread.
+        /// </summary>
+        internal static Control Ui;
+
         public AutoDrawAutomation(Inventor.Application app) { _app = app; }
 
         public string Open(object paths)
+        {
+            Control ui = Ui;
+            if (ui != null && ui.IsHandleCreated && ui.InvokeRequired)
+                return (string)ui.Invoke(new Func<string>(() => OpenHere(paths)));
+            return OpenHere(paths);
+        }
+
+        private string OpenHere(object paths)
         {
             try
             {

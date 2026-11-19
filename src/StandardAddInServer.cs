@@ -31,6 +31,8 @@ namespace AutoDraw
         {
             _app = addInSiteObject.Application;
             _automation = new AutoDrawAutomation(_app);
+            AutoDrawAutomation.Ui = new Control();
+            IntPtr uiHandle = AutoDrawAutomation.Ui.Handle;   // made here, on Inventor's main thread
             string clientGuid = "{" + ClientId + "}";
             InventorCommandIcons.Init(_app);
 
