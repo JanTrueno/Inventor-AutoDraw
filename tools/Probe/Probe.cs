@@ -34,6 +34,7 @@ internal static class Probe
         if (args[0] == "find") return Find(app, args[1]);
         if (args[0] == "import") return Import(app, args[1]);
         if (args[0] == "tosheet") return ToSheet(app, args[1]);
+        if (args[0] == "redim") return Redim(app, args[1], args[2]);
         if (args[0] == "activate") { var ai = app.ApplicationAddIns.ItemById[args[1]]; try { ai.Activate(); Console.WriteLine("active=" + ai.Activated); } catch (Exception ex) { Console.WriteLine(ex); } return 0; }
         return 1;
     }
@@ -319,6 +320,42 @@ internal static class Probe
 
     // imports a STEP (a copy!) and tries to make sheet metal of it: thickness from volume and area, convert, unfold.
     // Nothing is saved.
+    // dimensions the first sheet of a copy of a drawing again with the current Dimensioner (all dimensions and notes
+    // removed first) and exports it as PDF; the original is not touched
+    private static int Redim(Inventor.Application app, string idw, string pdf)
+    {
+        string copy = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ad_redim_" + System.IO.Path.GetFileName(idw));
+        System.IO.File.Copy(idw, copy, true);
+        bool silent = app.SilentOperation;
+        app.SilentOperation = true;
+        var d = (DrawingDocument)app.Documents.Open(copy, false);
+        try
+        {
+            Sheet sheet = d.Sheets[1];
+            for (int i = sheet.DrawingDimensions.GeneralDimensions.Count; i >= 1; i--) { try { sheet.DrawingDimensions.GeneralDimensions[i].Delete(); } catch { } }
+            for (int i = sheet.DrawingDimensions.OrdinateDimensionSets.Count; i >= 1; i--) { try { sheet.DrawingDimensions.OrdinateDimensionSets[i].Delete(); } catch { } }
+            for (int i = sheet.DrawingNotes.BendNotes.Count; i >= 1; i--) { try { sheet.DrawingNotes.BendNotes[i].Delete(); } catch { } }
+            var dim = new AutoDraw.Drawing.Dimensioner(app, sheet);
+            DrawingView flat = null, profile = null;
+            int arcs = -1;
+            foreach (DrawingView v in sheet.DrawingViews)
+            {
+                if (v.IsFlatPatternView) { if (flat == null || v.Width > flat.Width) flat = v; continue; }
+                if (v.Camera.ViewOrientationType.ToString().Contains("Iso")) continue;
+                int a = AutoDraw.Drawing.Dimensioner.ArcCount(v);
+                Console.WriteLine($"view {v.Name} arcs={a} {v.Width:0.0}x{v.Height:0.0}");
+                if (a > arcs) { arcs = a; profile = v; }
+            }
+            if (profile != null) { dim.Overall(profile, true, true, 1); dim.Legs(profile); dim.Angles(profile, true); }
+            if (flat != null) { dim.Overall(flat, true, true, 1); dim.FlatPattern(flat); }
+            Console.WriteLine($"general={sheet.DrawingDimensions.GeneralDimensions.Count} ordinate sets={sheet.DrawingDimensions.OrdinateDimensionSets.Count} bend notes={sheet.DrawingNotes.BendNotes.Count}");
+            d.SaveAs(pdf, true);
+            Console.WriteLine("pdf: " + pdf);
+        }
+        finally { d.Close(true); app.SilentOperation = silent; }
+        return 0;
+    }
+
     private static int ToSheet(Inventor.Application app, string path)
     {
         bool silent = app.SilentOperation;

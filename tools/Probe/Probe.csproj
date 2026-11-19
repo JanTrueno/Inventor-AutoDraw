@@ -6,6 +6,11 @@
     <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
+    <!-- the dimensioning code itself, to try it on a copy of a drawing (mode redim) -->
+    <Compile Include="..\..\src\Drawing\Dimensioner.cs" Link="Dimensioner.cs" />
+    <Compile Include="..\..\src\Core\Log.cs" Link="Log.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Autodesk.Inventor.Interop">
       <HintPath>C:\Program Files\Autodesk\Inventor 2025\Bin\Public Assemblies\Autodesk.Inventor.Interop.dll</HintPath>

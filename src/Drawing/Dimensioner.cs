@@ -18,6 +18,7 @@ namespace AutoDraw.Drawing
 
         private readonly Sheet _sheet;
         private readonly TransientGeometry _tg;
+        private readonly TransientObjects _to;
         private readonly GeneralDimensions _dims;
         private bool _updated;
 
@@ -25,6 +26,7 @@ namespace AutoDraw.Drawing
         {
             _sheet = sheet;
             _tg = app.TransientGeometry;
+            _to = app.TransientObjects;
             _dims = sheet.DrawingDimensions.GeneralDimensions;
             // the views were just placed: make them precise (not raster previews) and current before dimensioning
             try
@@ -173,6 +175,8 @@ namespace AutoDraw.Drawing
         public void Angles(DrawingView view, bool square = false, int max = 8)
         {
             List<Curve> lines = Read(view).Where(k => k.IsLine && IsOutline(k)).ToList();
+            HashSet<Curve> facets = Facets(lines);
+            lines = lines.Where(k => !facets.Contains(k)).ToList();
             double diag = Math.Sqrt(view.Width * view.Width + view.Height * view.Height);
             double minLen = Math.Max(0.3, diag * 0.03);
             var edges = lines.Select(k => (K: k, Len: Math.Sqrt((k.EX - k.SX) * (k.EX - k.SX) + (k.EY - k.SY) * (k.EY - k.SY))))
@@ -306,9 +310,10 @@ namespace AutoDraw.Drawing
         public void Legs(DrawingView view, int max = 12)
         {
             List<Curve> all = Read(view).Where(k => k.IsLine && IsOutline(k)).ToList();
+            HashSet<Curve> facets = Facets(all);
             double diag = Math.Sqrt(view.Width * view.Width + view.Height * view.Height);
             double minLen = Math.Max(0.3, diag * 0.04);
-            var lines = all.Where(k => Len(k) >= minLen).ToList();
+            var lines = all.Where(k => Len(k) >= minLen && !facets.Contains(k)).ToList();
             if (lines.Count < 2) return;
 
             // the middle of the profile, weighted by edge length
@@ -349,6 +354,38 @@ namespace AutoDraw.Drawing
                     : Math.Abs(o.SX - o.EX) < 1e-4 ? DimensionTypeEnum.kVerticalDimensionType : DimensionTypeEnum.kAlignedDimensionType;
                 Linear(text, a, b, type);
             }
+        }
+
+        /// <summary>
+        /// The straight pieces of a curve made of many small bends (the round bottom of a trough): edges that meet the
+        /// next edge at both ends with a small turn (under 25°). They get no leg length and no angle; dimensioning each
+        /// piece only fills the view with overlapping texts.
+        /// </summary>
+        private static HashSet<Curve> Facets(List<Curve> lines)
+        {
+            var facets = new HashSet<Curve>();
+            foreach (Curve o in lines)
+            {
+                double reach = Math.Max(0.05, Math.Min(0.6, 0.5 * Len(o)));
+                double turnS = Turn(o, o.SX, o.SY, lines, reach), turnE = Turn(o, o.EX, o.EY, lines, reach);
+                if (turnS > 0 && turnS < 25 && turnE > 0 && turnE < 25) facets.Add(o);
+            }
+            return facets;
+        }
+
+        /// <summary>The turn in degrees to the nearest non-parallel edge whose end is within reach of (px, py); -1 when none.</summary>
+        private static double Turn(Curve o, double px, double py, List<Curve> lines, double reach)
+        {
+            double best = reach, turn = -1;
+            foreach (Curve n in lines)
+            {
+                if (n == o) continue;
+                double a = AngleBetween(Dir(n), Dir(o)) * 180 / Math.PI;
+                if (a < 1) continue;   // parallel: the other side of the sheet, or a continuation
+                double d = Math.Min(Dist(px, py, n.SX, n.SY), Dist(px, py, n.EX, n.EY));
+                if (d < best) { best = d; turn = a; }
+            }
+            return turn;
         }
 
         /// <summary>The end of a leg: the virtual sharp with the leg next to it, else the end point itself.</summary>
@@ -419,7 +456,8 @@ namespace AutoDraw.Drawing
                 foreach (Curve k in vertical) anchors.Add((_sheet.CreateGeometryIntent(k.C, Type.Missing), k.SX));
                 GeometryIntent r = Extreme(curves, Side.Right, out double rx);
                 if (r != null) anchors.Add((r, rx));
-                Chain(anchors, true, box.MinY - Gap, -1);
+                if (Crowded(anchors)) Ordinate(anchors, true, box.MinY - Gap, -1);
+                else Chain(anchors, true, box.MinY - Gap, -1);
             }
 
             // horizontal bend lines → vertical chain right of the view
@@ -432,16 +470,159 @@ namespace AutoDraw.Drawing
                 foreach (Curve k in horizontal) anchors.Add((_sheet.CreateGeometryIntent(k.C, Type.Missing), k.SY));
                 GeometryIntent t = Extreme(curves, Side.Top, out double ty);
                 if (t != null) anchors.Add((t, ty));
-                Chain(anchors, false, box.MaxX + Gap, 1);
+                if (Crowded(anchors)) Ordinate(anchors, false, box.MaxX + Gap, 1);
+                else Chain(anchors, false, box.MaxX + Gap, 1);
             }
 
             // bend notes: UP/DOWN, angle and radius, in the bend note style of the template
             var noted = new HashSet<DrawingCurve>();
+            var notes = new List<(BendNote N, Curve K)>();
             foreach (Curve k in bends)
             {
                 if (!noted.Add(k.C)) continue;
-                try { _sheet.DrawingNotes.BendNotes.Add(k.C, Type.Missing); }
+                try { notes.Add((_sheet.DrawingNotes.BendNotes.Add(k.C, Type.Missing), k)); }
                 catch (Exception ex) { Log.Write("Bend note failed: " + ex.Message); }
+            }
+            Stagger(notes.Where(n => Math.Abs(n.K.SY - n.K.EY) < same).ToList(), true);
+            Stagger(notes.Where(n => Math.Abs(n.K.SX - n.K.EX) < same).ToList(), false);
+        }
+
+        private const double TextPitch = 0.55;   // cm on the sheet between two dimension or note texts side by side
+
+        /// <summary>Bend lines so close together that the chain's texts would overlap.</summary>
+        private static bool Crowded(List<(GeometryIntent I, double At)> anchors)
+        {
+            var at = anchors.Select(a => a.At).OrderBy(x => x).ToList();
+            int close = 0;
+            for (int i = 0; i + 1 < at.Count; i++) if (at[i + 1] - at[i] < TextPitch * 1.5) close++;
+            return close >= 3;
+        }
+
+        /// <summary>
+        /// Ordinate dimensions (0 at the first edge) instead of a chain, for bend lines close together: the texts are
+        /// spread out along the line with a jog to their bend line, so they never overlap.
+        /// </summary>
+        private void Ordinate(List<(GeometryIntent I, double At)> anchors, bool horizontal, double line, double outward)
+        {
+            if (anchors.Count < 2) return;
+            OrdinateDimensionSet set;
+            try
+            {
+                ObjectCollection intents = _to.CreateObjectCollection();
+                foreach (var a in anchors) intents.Add(a.I);
+                double mid = (anchors.Min(a => a.At) + anchors.Max(a => a.At)) / 2;
+                Point2d place = horizontal ? _tg.CreatePoint2d(mid, line) : _tg.CreatePoint2d(line, mid);
+                set = _sheet.DrawingDimensions.OrdinateDimensionSets.Add(intents, place,
+                    horizontal ? DimensionTypeEnum.kHorizontalDimensionType : DimensionTypeEnum.kVerticalDimensionType, Type.Missing, Type.Missing);
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Ordinate dimensions failed (" + ex.Message + "); a chain instead");
+                Chain(anchors, horizontal, line, outward);
+                return;
+            }
+
+            // where each text is now (at its bend line), and where it goes: pushed apart to at least TextPitch
+            var members = new List<(OrdinateDimension D, double At)>();
+            foreach (OrdinateDimension m in set.Members)
+            {
+                try { Point2d o = m.Text.Origin; members.Add((m, horizontal ? o.X : o.Y)); } catch { }
+            }
+            members = members.OrderBy(m => m.At).ToList();
+            double[] spread = Spread(members.Select(m => m.At).ToArray(), TextPitch);
+            double jogFrom = line - outward * 0.2, jogTo = line + outward * 0.35, textAt = line + outward * 0.45;
+            for (int i = 0; i < members.Count; i++)
+            {
+                if (Math.Abs(spread[i] - members[i].At) < 1e-4) continue;
+                OrdinateDimension d = members[i].D;
+                try
+                {
+                    d.JogPointOne = horizontal ? _tg.CreatePoint2d(members[i].At, jogFrom) : _tg.CreatePoint2d(jogFrom, members[i].At);
+                    d.JogPointTwo = horizontal ? _tg.CreatePoint2d(spread[i], jogTo) : _tg.CreatePoint2d(jogTo, spread[i]);
+                    d.Text.Origin = horizontal ? _tg.CreatePoint2d(spread[i], textAt) : _tg.CreatePoint2d(textAt, spread[i]);
+                }
+                catch (Exception ex) { Log.Write("Moving an ordinate text failed: " + ex.Message); }
+            }
+        }
+
+        /// <summary>Positions at least <paramref name="pitch"/> apart, each group of pushed texts centred on its originals.</summary>
+        internal static double[] Spread(double[] at, double pitch)
+        {
+            int n = at.Length;
+            var groups = new List<(int From, int To, double Start)>();
+            for (int i = 0; i < n; i++)
+            {
+                groups.Add((i, i, at[i]));
+                // merge with the group before while they overlap; a merged group is centred on its members
+                while (groups.Count > 1)
+                {
+                    var b = groups[groups.Count - 1];
+                    var a = groups[groups.Count - 2];
+                    if (a.Start + (a.To - a.From + 1) * pitch <= b.Start + 1e-9) break;
+                    int from = a.From, to = b.To;
+                    double mean = 0;
+                    for (int k = from; k <= to; k++) mean += at[k] - (k - from) * pitch;
+                    groups.RemoveRange(groups.Count - 2, 2);
+                    groups.Add((from, to, mean / (to - from + 1)));
+                }
+            }
+            var result = new double[n];
+            foreach (var g in groups) for (int k = g.From; k <= g.To; k++) result[k] = g.Start + (k - g.From) * pitch;
+            return result;
+        }
+
+        /// <summary>
+        /// Bend notes of bend lines close together, which Inventor puts at the middle of each line, on top of each other:
+        /// moved along their lines into columns, so neighbouring lines have their notes side by side.
+        /// </summary>
+        private static void Stagger(List<(BendNote N, Curve K)> notes, bool horizontalLines)
+        {
+            if (notes.Count < 2) return;
+            notes = notes.OrderBy(n => horizontalLines ? n.K.SY : n.K.SX).ToList();
+            double across(Curve k) => horizontalLines ? k.SY : k.SX;
+            double minGap = double.MaxValue;
+            for (int i = 0; i + 1 < notes.Count; i++) minGap = Math.Min(minGap, Math.Abs(across(notes[i + 1].K) - across(notes[i].K)));
+            double noteW = 0, noteH = 0;
+            foreach (var n in notes)
+            {
+                try
+                {
+                    Box2d rb = n.N.RangeBox;
+                    double w = rb.MaxPoint.X - rb.MinPoint.X, h = rb.MaxPoint.Y - rb.MinPoint.Y;
+                    noteW = Math.Max(noteW, horizontalLines ? w : h);
+                    noteH = Math.Max(noteH, horizontalLines ? h : w);
+                }
+                catch { }
+            }
+            if (noteW <= 0 || minGap >= noteH * 2.0) return;   // they fit as they are
+
+            // lines that lie within a note's height of each other need different columns
+            int need = (int)Math.Ceiling(noteH * 2.0 / Math.Max(minGap, 1e-3)) + 1;
+            double from = notes.Max(n => horizontalLines ? Math.Min(n.K.SX, n.K.EX) : Math.Min(n.K.SY, n.K.EY));
+            double to = notes.Min(n => horizontalLines ? Math.Max(n.K.SX, n.K.EX) : Math.Max(n.K.SY, n.K.EY));
+            double length = to - from;
+            int cols = Math.Max(2, Math.Min(need, (int)Math.Floor(length / (noteW * 1.15))));
+            double colW = length / cols;
+            // each note takes the next column that no note within a note's height of it has taken
+            var col = new int[notes.Count];
+            for (int i = 0; i < notes.Count; i++)
+            {
+                var taken = new HashSet<int>();
+                for (int j = i - 1; j >= 0 && Math.Abs(across(notes[i].K) - across(notes[j].K)) < noteH * 2.0; j--) taken.Add(col[j]);
+                int c = i == 0 ? 0 : (col[i - 1] + 1) % cols;
+                for (int t = 0; t < cols && taken.Contains(c); t++) c = (c + 1) % cols;
+                col[i] = c;
+            }
+            for (int i = 0; i < notes.Count; i++)
+            {
+                double along = from + colW * (col[i] + 0.5);
+                try
+                {
+                    Point2d p = notes[i].N.Position;
+                    if (horizontalLines) p.X = along; else p.Y = along;
+                    notes[i].N.Position = p;
+                }
+                catch (Exception ex) { Log.Write("Moving a bend note failed: " + ex.Message); }
             }
         }
 
