@@ -42,6 +42,7 @@ namespace AutoDraw.UI
         private readonly FieldBox _large;
         private readonly FieldBox _drawingOrder;
         private readonly FieldBox _orderProp;
+        private CheckBox _askCheckOut;
         private Label _orderCaption;
         private readonly FieldBox _sheetName;
         private readonly FieldBox _rules;
@@ -63,23 +64,74 @@ namespace AutoDraw.UI
         /// Opened by another program (<see cref="AutoDrawAutomation"/>): the window for exactly these models, in place of
         /// what it showed. Returns an error, or null.
         /// </summary>
-        public static string OpenModels(Inventor.Application app, List<Document> models)
+        public static string OpenModels(Inventor.Application app, List<Document> models, string options = null)
         {
             MainWindow w = _active;
             if (w != null && !w.IsDisposed)
             {
                 if (w._busy) return "AutoDraw is busy making a drawing.";
                 if (w.WindowState == FormWindowState.Minimized) w.WindowState = FormWindowState.Normal;
-                w.LoadModels(models, null);
-                w.Activate();
-                return null;
             }
-            w = new MainWindow(app);
-            _active = w;
-            w.Show(new InventorWindow(app.MainFrameHWND));
+            else
+            {
+                w = new MainWindow(app);
+                _active = w;
+                w.Show(new InventorWindow(app.MainFrameHWND));
+            }
             w.LoadModels(models, null);
+            string problems = w.ApplyOptions(options);
             w.Activate();
-            return null;
+            return problems;
+        }
+
+        /// <summary>
+        /// Fills in fields and switches ticks as another program asked (see <see cref="WindowOptions"/>): order, orderProperty,
+        /// template, twoSheetsAbove, up (Z/Y), drawingProperty, sheetName, rules, askCheckOut, and a document type
+        /// (Assembly, Bent, Flat, Lathe, Tube, General) = on/off. Like typing them in, they are kept as settings, except the
+        /// order number. Returns the options that were not understood, or null.
+        /// </summary>
+        private string ApplyOptions(string options)
+        {
+            List<KeyValuePair<string, string>> list;
+            try { list = WindowOptions.Parse(options); }
+            catch (Exception ex) { return "Options not understood: " + ex.Message; }
+            if (list.Count == 0) return null;
+            var problems = new List<string>();
+            string order = null;
+            // the order number's iProperty first: changing it reads the order number again
+            foreach (KeyValuePair<string, string> kv in list.OrderBy(kv => kv.Key == "orderproperty" ? 0 : 1))
+            {
+                string v = kv.Value ?? "";
+                switch (kv.Key)
+                {
+                    case "order": case "ordernumber": case "ordernummer": order = v; break;
+                    case "orderproperty": if (v.Length > 0) _orderProp.Text = v; break;
+                    case "template": _template.Text = v; break;
+                    case "twosheetsabove": case "largeassemblyrows": _large.Text = v; break;
+                    case "up": case "orientation": case "upaxis":
+                        _settings.UpAxis = v.Trim().ToUpperInvariant().StartsWith("Y") ? "Y" : "Z";
+                        _settings.Save();
+                        _up.SetItems(new[] { "Z up (models standing on XY)", "Y up (Inventor default)" }, _settings.ZUp ? "Z up (models standing on XY)" : "Y up (Inventor default)", null);
+                        break;
+                    case "drawingproperty": case "drawingorderproperty": _drawingOrder.Text = v; break;
+                    case "sheetname": case "sheetnameproperty": _sheetName.Text = v; break;
+                    case "rules": case "ilogicrules": _rules.Text = v.Replace(',', ';'); break;
+                    case "askcheckout":
+                        if (WindowOptions.Bool(v) is bool ask) _askCheckOut.Checked = ask; else problems.Add(kv.Key + "=" + v);
+                        break;
+                    default:
+                        DocKind? kind = WindowOptions.Kind(kv.Key);
+                        if (kind != null && WindowOptions.Bool(v) is bool on && _typeBoxes.TryGetValue(kind.Value, out CheckBox box))
+                        {
+                            if (box.Checked != on) box.Checked = on;   // ticks or unticks the documents of that type
+                        }
+                        else problems.Add(kv.Key + "=" + v);
+                        break;
+                }
+            }
+            if (order != null) _order.Text = order;
+            CheckOrder();
+            return problems.Count > 0 ? "Options not understood: " + string.Join(", ", problems) : null;
         }
 
         /// <summary>
@@ -307,7 +359,7 @@ namespace AutoDraw.UI
             _rules.Size = new Size(w, 22);
             more.Controls.Add(_rules);
 
-            var askCheckOut = new CheckBox
+            var askCheckOut = _askCheckOut = new CheckBox
             {
                 Text = "Ask to check out checked-in files (Vault)", Size = new Size(w, 24), Margin = new Padding(0, 10, 0, 0),
                 ForeColor = _theme.Text, BackColor = _theme.Back, FlatStyle = FlatStyle.Flat, Checked = _settings.AskCheckOut

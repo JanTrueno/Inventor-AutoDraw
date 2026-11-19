@@ -129,15 +129,15 @@ namespace AutoDrawDev
         }
 
         /// <summary>Automation call from another program: forwarded to the latest build's AutoDrawAutomation.</summary>
-        internal string Open(object paths)
+        internal string Open(object paths, string options)
         {
             if (_ui != null && _ui.IsHandleCreated && _ui.InvokeRequired)
-                return (string)_ui.Invoke(new Func<string>(() => Open(paths)));
+                return (string)_ui.Invoke(new Func<string>(() => Open(paths, options)));
             try
             {
                 EnsureLatest();
                 object auto = Activator.CreateInstance(_autoDraw.GetType("AutoDraw.AutoDrawAutomation", true), _app);
-                return auto.GetType().GetMethod("Open").Invoke(auto, new[] { paths }) as string ?? "";
+                return auto.GetType().GetMethod("OpenWith").Invoke(auto, new[] { paths, options }) as string ?? "";
             }
             catch (Exception ex)
             {
@@ -194,6 +194,7 @@ namespace AutoDrawDev
     public interface IDevAutomation
     {
         string Open(object paths);
+        string OpenWith(object paths, string options);
     }
 
     [ComVisible(true)]
@@ -203,7 +204,8 @@ namespace AutoDrawDev
     {
         private readonly DevServer _server;
         internal DevAutomation(DevServer server) { _server = server; }
-        public string Open(object paths) => _server.Open(paths);
+        public string Open(object paths) => _server.Open(paths, null);
+        public string OpenWith(object paths, string options) => _server.Open(paths, options);
     }
 
     /// <summary>Loads AutoDraw from the copy; Inventor's interop comes from this loader, so the COM types are the same.</summary>

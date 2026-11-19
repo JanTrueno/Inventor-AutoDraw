@@ -247,6 +247,16 @@ internal static class CoreTests
         Quantities.Compute(qAll);
         Check("typed part quantity is only that part", qBolt.QuantityValue == "50" && qPlate.Quantity == 6);
 
+        // options passed by another program
+        var opt = WindowOptions.Parse("order=160261777; Tube = off;General=nee; Sheet-Name=Part Number").ToDictionary(kv => kv.Key, kv => kv.Value);
+        Check("options: key=value", opt["order"] == "160261777" && opt["tube"] == "off" && opt["general"] == "nee" && opt["sheetname"] == "Part Number",
+            string.Join(" | ", opt.Select(kv => kv.Key + "=" + kv.Value)));
+        var json = WindowOptions.Parse("{\"Order\": \"160261777\", \"Bent\": false, \"rules\": [\"a\", \"b\"]}").ToDictionary(kv => kv.Key, kv => kv.Value);
+        Check("options: JSON", json["order"] == "160261777" && json["bent"] == "false" && json["rules"] == "a; b");
+        Check("options: on/off words", WindowOptions.Bool("aan") == true && WindowOptions.Bool("OFF") == false && WindowOptions.Bool("maybe") == null);
+        Check("options: type names", WindowOptions.Kind("Bent") == DocKind.SheetMetalFolded && WindowOptions.Kind("Flat sheet") == DocKind.SheetMetalFlat
+            && WindowOptions.Kind("tube") == DocKind.Tube && WindowOptions.Kind("Assemblies") == DocKind.Assembly && WindowOptions.Kind("order") == null);
+
         Check("group name", Naming.GroupName(new[] { "frame", "door" }) == "frame+door"
             && Naming.GroupName(new[] { "a long assembly name", "another long assembly", "third" }) == "a long assembly name+2 more");
 

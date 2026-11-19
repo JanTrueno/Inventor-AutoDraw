@@ -2,7 +2,8 @@
 # next to it, or the existing one of that name is used). Also an example of calling AutoDraw from another program.
 # Usage:  powershell -ExecutionPolicy Bypass -File tools\open-in-autodraw.ps1 C:\x\a.stp C:\x\b.stp
 #         add -Dev to use the "AutoDraw dev" loader (the latest build) instead of the installed AutoDraw
-param([switch]$Dev, [Parameter(ValueFromRemainingArguments = $true)][string[]]$Files)
+#         add -Options "order=160261777; Tube=off; General=off" to fill in fields and switch ticks
+param([switch]$Dev, [string]$Options = '', [Parameter(ValueFromRemainingArguments = $true)][string[]]$Files)
 
 $ErrorActionPreference = 'Stop'
 if (-not $Files -or $Files.Count -eq 0) { throw 'Give one or more STEP, .ipt or .iam files.' }
@@ -16,5 +17,5 @@ $addin = $inventor.ApplicationAddIns.ItemById($id)
 if (-not $addin.Activated) { $addin.Activate() }
 $auto = $addin.Automation
 # late bound by name (IDispatch), as Python's win32com does: the .NET 8 add-in has no registered type library
-$result = [System.__ComObject].InvokeMember('Open', [Reflection.BindingFlags]::InvokeMethod, $null, $auto, @(($paths -join ';')))
+$result = [System.__ComObject].InvokeMember('OpenWith', [Reflection.BindingFlags]::InvokeMethod, $null, $auto, @(($paths -join ';'), $Options))
 if ($result) { Write-Warning $result } else { "Opened in AutoDraw: $($paths.Count) file(s)" }

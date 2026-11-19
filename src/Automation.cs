@@ -28,6 +28,14 @@ namespace AutoDraw
         /// existing one of that name). Paths separated by ; or | , or an array. Returns "" when the window is open, else why not.
         /// </summary>
         string Open(object paths);
+
+        /// <summary>
+        /// As <see cref="Open"/>, then fills in fields and switches ticks: "key=value; key=value" or a JSON object, e.g.
+        /// "order=160261777; template=C:\t\A3.idw; Tube=off; General=off". Keys: order, orderProperty, template,
+        /// twoSheetsAbove, up (Z/Y), drawingProperty, sheetName, rules, askCheckOut (on/off), and a type
+        /// (Assembly, Bent, Flat, Lathe, Tube, General) = on/off.
+        /// </summary>
+        string OpenWith(object paths, string options);
     }
 
     [ComVisible(true)]
@@ -45,15 +53,17 @@ namespace AutoDraw
 
         public AutoDrawAutomation(Inventor.Application app) { _app = app; }
 
-        public string Open(object paths)
+        public string Open(object paths) => OpenWith(paths, null);
+
+        public string OpenWith(object paths, string options)
         {
             Control ui = Ui;
             if (ui != null && ui.IsHandleCreated && ui.InvokeRequired)
-                return (string)ui.Invoke(new Func<string>(() => OpenHere(paths)));
-            return OpenHere(paths);
+                return (string)ui.Invoke(new Func<string>(() => OpenHere(paths, options)));
+            return OpenHere(paths, options);
         }
 
-        private string OpenHere(object paths)
+        private string OpenHere(object paths, string options)
         {
             try
             {
@@ -76,7 +86,7 @@ namespace AutoDraw
                     }
                 }
                 if (models.Count == 0) return string.Join("\n", problems);
-                string error = MainWindow.OpenModels(_app, models);
+                string error = MainWindow.OpenModels(_app, models, options);
                 return string.Join("\n", (error != null ? new[] { error } : new string[0]).Concat(problems));
             }
             catch (Exception ex)

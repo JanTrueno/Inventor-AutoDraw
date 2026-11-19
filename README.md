@@ -51,6 +51,29 @@ add-in runs on .NET 8 and has no registered type library, so tools that first as
 `$obj.Open(...)`) fail with "type library is not registered"; in PowerShell use
 `[System.__ComObject].InvokeMember('Open', 'InvokeMethod', $null, $auto, @($paths))`.
 
+`OpenWith(paths, options)` also fills in fields and switches ticks, as typing them in would (they are kept as settings,
+except the order number):
+
+```python
+ad.OpenWith(r"C:\x\frame.stp", "order=160261777; template=I:\t\A3.idw; Tube=off; General=off")
+ad.OpenWith(r"C:\x\frame.stp", '{"order": "160261777", "Bent": true, "askCheckOut": false}')   # or JSON
+```
+
+| Key | Value |
+|---|---|
+| `order` | order number (only in the window) |
+| `orderProperty` | iProperty the order number comes from |
+| `template` | drawing template |
+| `twoSheetsAbove` | parts list rows for two assembly sheets |
+| `up` | `Z` or `Y` |
+| `drawingProperty`, `sheetName` | iProperty names |
+| `rules` | iLogic rules, separated by `,` |
+| `askCheckOut` | `on`/`off` |
+| `Assembly`, `Bent`, `Flat`, `Lathe`, `Tube`, `General` | `on`/`off`: the type ticks |
+
+Keys ignore case, spaces, `-` and `_`; on/off also takes true/false, yes/no, ja/nee, 1/0. `OpenWith` returns the options
+it did not understand. `tools\open-in-autodraw.ps1 -Options "..." <files>` passes them from the command line.
+
 ## Vault
 
 With **Ask to check out checked-in files (Vault)** ticked (in Settings; on by default), AutoDraw looks before
