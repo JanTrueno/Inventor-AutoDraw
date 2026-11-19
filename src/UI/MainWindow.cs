@@ -306,6 +306,14 @@ namespace AutoDraw.UI
             more.Controls.Add(Caption("iLogic rules to run on the new drawing", w));
             _rules.Size = new Size(w, 22);
             more.Controls.Add(_rules);
+
+            var askCheckOut = new CheckBox
+            {
+                Text = "Ask to check out checked-in files (Vault)", Size = new Size(w, 24), Margin = new Padding(0, 10, 0, 0),
+                ForeColor = _theme.Text, BackColor = _theme.Back, FlatStyle = FlatStyle.Flat, Checked = _settings.AskCheckOut
+            };
+            askCheckOut.CheckedChanged += (s, e) => { _settings.AskCheckOut = askCheckOut.Checked; _settings.Save(); };
+            more.Controls.Add(askCheckOut);
             Fold();
 
             _thumb.Size = new Size(w, w);   // square, like the thumbnails _thumb.SizeMode = PictureBoxSizeMode.Zoom; _thumb.BackColor = _theme.Field;
@@ -774,6 +782,7 @@ namespace AutoDraw.UI
         /// <summary>Asks to check out the read-only (checked in) files among these documents, the models and the drawing.</summary>
         private bool CheckOut(IEnumerable<DocNode> nodes)
         {
+            if (!_settings.AskCheckOut) return true;   // switched off: checked-in files are simply not saved (a warning says so)
             var docs = nodes.Where(n => n.Doc != null && !n.IsGroup && !n.IsContentCenter).Select(n => n.Doc).Concat(_models).ToList();
             var tops = new List<Document>();
             if (_drawing != null) { docs.Add((Document)_drawing); tops.Add((Document)_drawing); }

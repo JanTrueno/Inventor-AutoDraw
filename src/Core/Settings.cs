@@ -63,6 +63,9 @@ namespace AutoDraw.Core
         /// <summary>The Settings part of the window is unfolded.</summary>
         public bool SettingsOpen { get; set; }
 
+        /// <summary>Before writing: look for checked-in (read-only) files and ask whether to check them out in Vault.</summary>
+        public bool AskCheckOut { get; set; }
+
         public int WindowX { get; set; } = -1;
         public int WindowY { get; set; } = -1;
         public int WindowW { get; set; } = 1280;
