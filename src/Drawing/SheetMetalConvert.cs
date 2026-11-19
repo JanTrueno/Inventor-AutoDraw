@@ -38,29 +38,49 @@ namespace AutoDraw.Drawing
         public static bool IsSheetMetal(PartDocument part) =>
             string.Equals(part.SubType, KindDetector.SheetMetalSubType, StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// A real sheet metal part: sheet metal with bends or a flat pattern. An imported solid can be a sheet metal part
+        /// already (Inventor's import can give it that type) while it has neither and has the style's thickness, not its own.
+        /// </summary>
+        public static bool IsFinishedSheetMetal(PartDocument part)
+        {
+            if (!IsSheetMetal(part)) return false;
+            try
+            {
+                var sm = (SheetMetalComponentDefinition)part.ComponentDefinition;
+                return sm.HasFlatPattern || sm.Bends.Count > 0;
+            }
+            catch { return true; }
+        }
+
         /// <summary>Converts the part; returns false (and why) when it is not one thin solid or Inventor refuses.</summary>
         public static bool Convert(PartDocument part, out string why)
         {
             why = null;
-            if (IsSheetMetal(part)) return true;
+            if (IsFinishedSheetMetal(part)) return true;
             double t = SheetThickness(part);
             if (t <= 0) { why = "not one solid of one thin thickness"; return false; }
             string mm = (t * 10).ToString("0.#", CultureInfo.InvariantCulture) + " mm";
             try
             {
-                part.SubType = KindDetector.SheetMetalSubType;
+                if (!IsSheetMetal(part)) part.SubType = KindDetector.SheetMetalSubType;
                 var sm = (SheetMetalComponentDefinition)part.ComponentDefinition;
                 // the thickness parameter cannot be set on a converted part; a style of that thickness can
                 string name = "AutoDraw " + mm;
-                SheetMetalStyle style = null;
-                try { style = (SheetMetalStyle)sm.SheetMetalStyles[name]; } catch { }
-                if (style == null)
+                double now = -1;
+                try { now = System.Convert.ToDouble(sm.Thickness.Value); } catch { }
+                if (Math.Abs(now - t) > 0.004)   // a native sheet metal part of the right thickness keeps its style
                 {
-                    style = (SheetMetalStyle)sm.ActiveSheetMetalStyle.Copy(name);
-                    style.Thickness = mm;
+                    SheetMetalStyle style = null;
+                    try { style = (SheetMetalStyle)sm.SheetMetalStyles[name]; } catch { }
+                    if (style == null)
+                    {
+                        style = (SheetMetalStyle)sm.ActiveSheetMetalStyle.Copy(name);
+                        style.Thickness = mm;
+                    }
+                    style.Activate();
+                    sm.UseSheetMetalStyleThickness = true;
                 }
-                style.Activate();
-                sm.UseSheetMetalStyleThickness = true;
                 try { ((Document)part).Update2(true); } catch { }
                 // Inventor finds the bends when it unfolds: make the flat pattern now, so the type is seen right away
                 try

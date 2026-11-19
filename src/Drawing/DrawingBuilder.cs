@@ -395,7 +395,7 @@ namespace AutoDraw.Drawing
             // a plain solid typed (or detected) as bent or flat sheet, e.g. an imported STEP, becomes sheet metal first
             foreach (SheetJob j in jobs.Where(j => j.Part == 0 && (j.Node.Kind == DocKind.SheetMetalFolded || j.Node.Kind == DocKind.SheetMetalFlat)))
             {
-                if (!(j.Node.Doc is PartDocument plain) || SheetMetalConvert.IsSheetMetal(plain)) continue;
+                if (!(j.Node.Doc is PartDocument plain) || SheetMetalConvert.IsFinishedSheetMetal(plain)) continue;
                 if (SheetMetalConvert.Convert(plain, out string why)) changed.Add(j.Node.Doc);
                 else Warnings.Add(j.Node.Name + ": not converted to sheet metal (" + why + ")");
             }
