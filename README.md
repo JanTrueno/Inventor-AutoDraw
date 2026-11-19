@@ -71,6 +71,7 @@ ad.OpenWith(r"C:\x\frame.stp", '{"order": "160261777", "Bent": true, "askCheckOu
 | `drawingProperty`, `sheetName` | iProperty names |
 | `rules` | iLogic rules, separated by `,` |
 | `askCheckOut` | `on`/`off` |
+| `sheetMetal` | `on`: the files are sheet metal (e.g. from CADMAN); plain solids of one thin thickness become sheet metal parts |
 | `Assembly`, `Bent`, `Flat`, `Lathe`, `Tube`, `General` | `on`/`off`: the type ticks |
 
 Keys ignore case, spaces, `-` and `_`; on/off also takes true/false, yes/no, ja/nee, 1/0. `OpenWith` returns the options
@@ -179,6 +180,10 @@ group at the bottom.
 | Lathe | side view with the axis horizontal, end view, iso; length and Ø |
 | Tube / profile | long view, end view, iso; length and profile size (Ø for round tubes) |
 | General | front, top, side, iso; overall dimensions |
+
+A plain solid typed (or detected) as Bent or Flat sheet, e.g. an imported STEP, is converted to sheet metal when the
+drawing is made: the thickness is measured (twice the volume over the area), a copy of the sheet metal style gets that
+thickness, and Inventor finds the bends when it unfolds.
 
 Empty documents (a part without bodies, an assembly without components) are unticked with the status "empty". Sheet
 metal is one solid: a sheet metal file with several solids (e.g. an imported STEP of a bought part) is General. Without

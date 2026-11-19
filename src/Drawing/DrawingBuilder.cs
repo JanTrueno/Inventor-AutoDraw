@@ -392,6 +392,14 @@ namespace AutoDraw.Drawing
             foreach (DocNode n in all)
                 foreach (KeyValuePair<string, string> kv in n.Edited) Set(n.Doc, kv.Key, kv.Value, n);
 
+            // a plain solid typed (or detected) as bent or flat sheet, e.g. an imported STEP, becomes sheet metal first
+            foreach (SheetJob j in jobs.Where(j => j.Part == 0 && (j.Node.Kind == DocKind.SheetMetalFolded || j.Node.Kind == DocKind.SheetMetalFlat)))
+            {
+                if (!(j.Node.Doc is PartDocument plain) || SheetMetalConvert.IsSheetMetal(plain)) continue;
+                if (SheetMetalConvert.Convert(plain, out string why)) changed.Add(j.Node.Doc);
+                else Warnings.Add(j.Node.Name + ": not converted to sheet metal (" + why + ")");
+            }
+
             // sheet metal parts get a flat pattern when they have none, seen from the side where most bends go up
             foreach (SheetJob j in jobs.Where(j => j.Part == 0 && (j.Node.Kind == DocKind.SheetMetalFolded || j.Node.Kind == DocKind.SheetMetalFlat)))
             {

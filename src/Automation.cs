@@ -86,6 +86,7 @@ namespace AutoDraw
                     }
                 }
                 if (models.Count == 0) return string.Join("\n", problems);
+                if (WantsSheetMetal(options)) problems.AddRange(MakeSheetMetal(models));
                 string error = MainWindow.OpenModels(_app, models, options);
                 return string.Join("\n", (error != null ? new[] { error } : new string[0]).Concat(problems));
             }
@@ -94,6 +95,39 @@ namespace AutoDraw
                 Log.Write("Automation: Open failed: " + ex);
                 return ex.Message;
             }
+        }
+
+        /// <summary>Option sheetMetal=on: the models are sheet metal (e.g. sent from CADMAN), plain solids are converted.</summary>
+        private static bool WantsSheetMetal(string options)
+        {
+            try { return WindowOptions.Parse(options).Any(kv => kv.Key == "sheetmetal" && WindowOptions.Bool(kv.Value) == true); }
+            catch { return false; }
+        }
+
+        /// <summary>Converts the thin plain solid parts among the models (and in their assemblies) to sheet metal and saves them.</summary>
+        private IEnumerable<string> MakeSheetMetal(List<Document> models)
+        {
+            var parts = new List<PartDocument>();
+            foreach (Document m in models)
+            {
+                if (m is PartDocument p) parts.Add(p);
+                else try { foreach (Document d in m.AllReferencedDocuments) if (d is PartDocument rp) parts.Add(rp); } catch { }
+            }
+            var problems = new List<string>();
+            bool silent = _app.SilentOperation;
+            _app.SilentOperation = true;
+            try
+            {
+                foreach (PartDocument p in parts.Distinct())
+                {
+                    if (Drawing.SheetMetalConvert.IsSheetMetal(p) || Drawing.SheetMetalConvert.SheetThickness(p) <= 0) continue;
+                    if (!Drawing.SheetMetalConvert.Convert(p, out string why)) { problems.Add(((Document)p).DisplayName + ": not converted to sheet metal (" + why + ")"); continue; }
+                    try { ((Document)p).Save(); }
+                    catch (Exception ex) { problems.Add(((Document)p).DisplayName + ": converted, not saved (" + ex.Message + ")"); }
+                }
+            }
+            finally { _app.SilentOperation = silent; }
+            return problems;
         }
 
         private static List<string> Paths(object paths)

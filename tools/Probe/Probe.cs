@@ -33,6 +33,7 @@ internal static class Probe
         if (args[0] == "commands") return Commands(app, args[1]);
         if (args[0] == "find") return Find(app, args[1]);
         if (args[0] == "import") return Import(app, args[1]);
+        if (args[0] == "tosheet") return ToSheet(app, args[1]);
         if (args[0] == "activate") { var ai = app.ApplicationAddIns.ItemById[args[1]]; try { ai.Activate(); Console.WriteLine("active=" + ai.Activated); } catch (Exception ex) { Console.WriteLine(ex); } return 0; }
         return 1;
     }
@@ -313,6 +314,69 @@ internal static class Probe
         }
         finally { app.SilentOperation = silent; }
         foreach (string f in System.IO.Directory.GetFiles(System.IO.Path.GetDirectoryName(path), "*", System.IO.SearchOption.AllDirectories)) Console.WriteLine("file " + f);
+        return 0;
+    }
+
+    // imports a STEP (a copy!) and tries to make sheet metal of it: thickness from volume and area, convert, unfold.
+    // Nothing is saved.
+    private static int ToSheet(Inventor.Application app, string path)
+    {
+        bool silent = app.SilentOperation;
+        app.SilentOperation = true;
+        PartDocument d = null;
+        try
+        {
+            d = (PartDocument)app.Documents.Open(path, false);
+            var def = d.ComponentDefinition;
+            double vol = 0, area = 0; int faces = 0, cyl = 0, planes = 0;
+            foreach (SurfaceBody b in def.SurfaceBodies)
+            {
+                vol += b.Volume[0.001];
+                foreach (Face f in b.Faces) { area += f.Evaluator.Area; faces++; if (f.SurfaceType == SurfaceTypeEnum.kCylinderSurface) cyl++; if (f.SurfaceType == SurfaceTypeEnum.kPlaneSurface) planes++; }
+            }
+            double t = 2 * vol / area;
+            Console.WriteLine($"bodies={def.SurfaceBodies.Count} faces={faces} planes={planes} cylinders={cyl} volume={vol:0.000} cm3 area={area:0.00} cm2 t~{t * 10:0.000} mm range={B(def.RangeBox)}");
+            d.SubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}";
+            var sm = (SheetMetalComponentDefinition)d.ComponentDefinition;
+            try { sm.UseSheetMetalStyleThickness = false; } catch (Exception ex) { Console.WriteLine("style thickness: " + ex.Message); }
+            string tx = (Math.Round(t * 100) / 10.0).ToString(System.Globalization.CultureInfo.InvariantCulture) + " mm";
+            try { d.Update2(true); } catch { }
+            try { var par = sm.Parameters["Thickness"]; Console.WriteLine("param Thickness = " + par.Expression); par.Expression = tx; Console.WriteLine("param set to " + tx); }
+            catch (Exception ex) { Console.WriteLine("param: " + ex.Message); }
+            if (Math.Abs(Convert.ToDouble(sm.Thickness.Value) * 10 - Math.Round(t * 100) / 10.0) > 0.01)
+            {
+                try
+                {
+                    SheetMetalStyle st = sm.ActiveSheetMetalStyle;
+                    Console.WriteLine("style " + st.Name + " thickness " + st.Thickness);
+                    SheetMetalStyle copy = (SheetMetalStyle)st.Copy("AutoDraw " + tx);
+                    copy.Thickness = tx;
+                    copy.Activate();
+                    sm.UseSheetMetalStyleThickness = true;
+                    Console.WriteLine("style copy active");
+                }
+                catch (Exception ex) { Console.WriteLine("style: " + ex.Message); }
+            }
+            try { d.Update2(true); } catch { }
+            Console.WriteLine("converted; thickness now " + Convert.ToDouble(sm.Thickness.Value) * 10 + " mm");
+            try { sm.Unfold(); Console.WriteLine("unfold ok; bends=" + sm.Bends.Count + " flat=" + sm.HasFlatPattern); }
+            catch (Exception ex) { Console.WriteLine("Unfold() failed: " + ex.Message); }
+            if (!sm.HasFlatPattern)
+            {
+                // largest planar face as base face
+                Face best = null; double ba = 0;
+                foreach (SurfaceBody b in sm.SurfaceBodies) foreach (Face f in b.Faces) if (f.SurfaceType == SurfaceTypeEnum.kPlaneSurface && f.Evaluator.Area > ba) { ba = f.Evaluator.Area; best = f; }
+                try { sm.Unfold2(best); Console.WriteLine("Unfold2(largest face) ok; bends=" + sm.Bends.Count + " flat=" + sm.HasFlatPattern); }
+                catch (Exception ex) { Console.WriteLine("Unfold2 failed: " + ex.Message); }
+            }
+            if (sm.HasFlatPattern) { var r = sm.FlatPattern.RangeBox; Console.WriteLine("flat pattern " + B(r)); try { sm.FlatPattern.ExitEdit(); } catch { } }
+        }
+        catch (Exception ex) { Console.WriteLine("failed: " + ex); }
+        finally
+        {
+            try { d?.Close(true); } catch { }
+            app.SilentOperation = silent;
+        }
         return 0;
     }
 

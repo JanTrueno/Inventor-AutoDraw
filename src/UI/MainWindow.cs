@@ -116,6 +116,7 @@ namespace AutoDraw.UI
                     case "drawingproperty": case "drawingorderproperty": _drawingOrder.Text = v; break;
                     case "sheetname": case "sheetnameproperty": _sheetName.Text = v; break;
                     case "rules": case "ilogicrules": _rules.Text = v.Replace(',', ';'); break;
+                    case "sheetmetal": break;   // handled when the files were opened (Automation.OpenWith)
                     case "askcheckout":
                         if (WindowOptions.Bool(v) is bool ask) _askCheckOut.Checked = ask; else problems.Add(kv.Key + "=" + v);
                         break;
