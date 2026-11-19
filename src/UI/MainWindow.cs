@@ -218,6 +218,7 @@ namespace AutoDraw.UI
 
             _grid = new TreeGrid(_theme) { Dock = DockStyle.Fill };
             _grid.LargeLimit = () => _settings.LargeAssemblyRows;
+            _grid.ShowLocation = () => _settings.ShowLocation;
             _grid.BuildColumns(_settings.ExtraColumns);
             _grid.PlanChanged += Renumber;
             _grid.NodeSelected += ShowNode;
@@ -793,6 +794,15 @@ namespace AutoDraw.UI
             foreach (string c in _settings.ExtraColumns) names.Add(c);
 
             var menu = new ThemedMenu(_theme) { ShowCheckMargin = true };
+            var location = new ToolStripMenuItem("File location") { Checked = _settings.ShowLocation };
+            location.Click += (s, e) =>
+            {
+                _settings.ShowLocation = !_settings.ShowLocation;
+                _settings.Save();
+                _grid.BuildColumns(_settings.ExtraColumns);
+            };
+            menu.Items.Add(location);
+            menu.Items.Add(new ToolStripSeparator());
             foreach (string name in names)
             {
                 string n = name;

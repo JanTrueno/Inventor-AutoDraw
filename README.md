@@ -151,7 +151,7 @@ drawing, the drawing's sheets decide what is ticked.
 The settings below are folded away under **▸ Settings** at the bottom of the left panel (click to unfold; the window
 remembers it).
 
-- **Columns…** – iProperty columns in the tree.
+- **Columns…** – iProperty columns in the tree, and **File location** (the folder of each file, shown by default).
 - The iProperty fields have a **…** list of the standard iProperties and the custom ones in the documents; typing a
   name works too. Defaults: `ordernummer` for the drawing, `Part Number` for the sheet names.
 

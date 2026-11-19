@@ -17,7 +17,7 @@ namespace AutoDraw.UI
     {
         private const int Step = 16;
         public const string ColName = "name", ColKind = "kind", ColQty = "qty", ColSheets = "sheets", ColSheetNo = "sheetno",
-            ColMaterial = "material", ColStatus = "status", ColRedo = "redo", ExtraPrefix = "prop:";
+            ColMaterial = "material", ColStatus = "status", ColRedo = "redo", ColLocation = "location", ExtraPrefix = "prop:";
 
         private readonly Theme _theme;
         private readonly Dictionary<(DocNode, string), string> _propCache = new Dictionary<(DocNode, string), string>();
@@ -31,6 +31,8 @@ namespace AutoDraw.UI
         public event Action<DocNode> NodeSelected;
 
         public Func<int> LargeLimit = () => 15;
+        /// <summary>Show the Location column (the folder of each file).</summary>
+        public Func<bool> ShowLocation = () => true;
 
         /// <summary>Opened from a drawing: shows the Redo column (make the sheet again).</summary>
         public bool DrawingMode;
@@ -89,6 +91,8 @@ namespace AutoDraw.UI
             Columns.Add(new DataGridViewTextBoxColumn { Name = ColMaterial, HeaderText = "Material", Width = 130, ReadOnly = true });
             foreach (string p in _extra)
                 Columns.Add(new DataGridViewTextBoxColumn { Name = ExtraPrefix + p, HeaderText = p, Width = 110 });
+            if (ShowLocation())
+                Columns.Add(new DataGridViewTextBoxColumn { Name = ColLocation, HeaderText = "Location", Width = 280, ReadOnly = true });
             Columns.Add(new DataGridViewTextBoxColumn { Name = ColStatus, HeaderText = "Status", ReadOnly = true, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = 120 });
             foreach (DataGridViewColumn c in Columns) c.SortMode = DataGridViewColumnSortMode.NotSortable;
             if (_root != null) Rebuild();
@@ -180,6 +184,13 @@ namespace AutoDraw.UI
                 foreach (string p in _extra)
                     Mark(r.Cells[ExtraPrefix + p], n.Edited.ContainsKey(p),
                         "Changed; in the file: " + (_propCache.TryGetValue((n, p), out string f) && f.Length > 0 ? f : "(empty)"));
+                if (Columns.Contains(ColLocation))
+                {
+                    string file = "";
+                    try { file = n.Doc?.FullFileName ?? ""; } catch { }
+                    r.Cells[ColLocation].Value = file.Length > 0 ? System.IO.Path.GetDirectoryName(file) : "";
+                    r.Cells[ColLocation].ToolTipText = file;
+                }
                 r.Cells[ColStatus].Value = n.Status;
                 r.Cells[ColStatus].Style.ForeColor = n.StatusBad ? Color.FromArgb(230, 90, 80) : _theme.Dim;
             }

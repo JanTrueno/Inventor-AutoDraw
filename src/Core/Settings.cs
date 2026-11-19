@@ -10,6 +10,8 @@ namespace AutoDraw.Core
     {
         public string TemplatePath { get; set; } = "";
         public List<string> ExtraColumns { get; set; } = new List<string>();
+        /// <summary>The tree shows the Location column (folder of each file).</summary>
+        public bool ShowLocation { get; set; } = true;
 
         public string OrderProperty { get; set; } = "ordernummer";
         public string OrderPlaceholder { get; set; } = "160100";
