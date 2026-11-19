@@ -413,8 +413,9 @@ namespace AutoDraw.Drawing
                     try { doc.Save(); }
                     catch (Exception ex)
                     {
-                        Log.Write("Saving " + doc.FullFileName + " failed: " + ex.Message);
-                        Warnings.Add("Could not save " + Path.GetFileName(doc.FullFileName) + " (checked in or read-only?)");
+                        string file = "?"; try { file = doc.FullFileName; } catch { }
+                        Log.Write("Saving " + file + " failed: " + ex.Message);
+                        Warnings.Add("Could not save " + Path.GetFileName(file) + " (checked in or read-only?)");
                     }
                 }
             }

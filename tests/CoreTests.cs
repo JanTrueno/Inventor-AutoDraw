@@ -76,6 +76,7 @@ internal static class CoreTests
         // order number
         var s = new AppSettings();
         Check("order ok", Naming.OrderProblem("160260496", s) == null);
+        Check("order with letters ok", Naming.OrderProblem("HS001624", s) == null, Naming.OrderProblem("HS001624", s));
         Check("order placeholder refused", Naming.OrderProblem("160100", s) != null);
         Check("order too short refused", Naming.OrderProblem("16025", s) != null);
         Check("order empty refused", Naming.OrderProblem(" ", s) != null);

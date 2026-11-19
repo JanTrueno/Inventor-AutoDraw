@@ -38,7 +38,9 @@ namespace AutoDraw.Core
                 string target = Path.ChangeExtension(path, d is AssemblyDocument ? ".iam" : ".ipt");
                 d.SaveAs(target, false);
                 Log.Write("Imported " + path + " as " + target);
-                return d;
+                // the imported document's object does not survive the Save As (every call then fails with E_FAIL):
+                // fetch the saved document by its new name
+                return app.Documents.Open(target, false);
             }
             finally { app.SilentOperation = silent; }
         }
