@@ -38,7 +38,9 @@ files through the add-in's Automation object:
 ```python
 import win32com.client
 inv = win32com.client.GetActiveObject("Inventor.Application")
-ad = inv.ApplicationAddIns.ItemById("{0091494E-410A-4CC7-BFFC-1248D26C64BD}").Automation
+addin = inv.ApplicationAddIns.ItemById("{0091494E-410A-4CC7-BFFC-1248D26C64BD}")
+if not addin.Activated: addin.Activate()     # Inventor may not have loaded it yet
+ad = addin.Automation
 error = ad.Open(r"C:\x\frame.stp;C:\x\bracket.ipt")     # or a list; "" when the window opened
 ```
 
