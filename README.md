@@ -46,6 +46,11 @@ A STEP opens as the `.iam`/`.ipt` of the same name next to it when there is one 
 it is imported and saved there (an assembly's parts go into a folder named after the STEP).
 `tools\open-in-autodraw.ps1 <files>` does the same from the command line.
 
+Call `Open` late bound (by name through IDispatch), as Python's win32com, VBA's `Object` and C#'s `dynamic` do: the
+add-in runs on .NET 8 and has no registered type library, so tools that first ask for type information (PowerShell's
+`$obj.Open(...)`) fail with "type library is not registered"; in PowerShell use
+`[System.__ComObject].InvokeMember('Open', 'InvokeMethod', $null, $auto, @($paths))`.
+
 ## Vault
 
 With **Ask to check out checked-in files (Vault)** ticked (in Settings; on by default), AutoDraw looks before

@@ -14,5 +14,7 @@ catch { throw 'Start Inventor first.' }
 $id = if ($Dev) { '{5D2B8F0E-7C41-4E8A-9B6A-2F3C1D9E7A10}' } else { '{0091494E-410A-4CC7-BFFC-1248D26C64BD}' }
 $addin = $inventor.ApplicationAddIns.ItemById($id)
 if (-not $addin.Activated) { $addin.Activate() }
-$result = $addin.Automation.Open(($paths -join ';'))
+$auto = $addin.Automation
+# late bound by name (IDispatch), as Python's win32com does: the .NET 8 add-in has no registered type library
+$result = [System.__ComObject].InvokeMember('Open', [Reflection.BindingFlags]::InvokeMethod, $null, $auto, @(($paths -join ';')))
 if ($result) { Write-Warning $result } else { "Opened in AutoDraw: $($paths.Count) file(s)" }
