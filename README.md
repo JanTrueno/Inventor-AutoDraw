@@ -48,7 +48,7 @@ it is imported and saved there (an assembly's parts go into a folder named after
 
 ## Vault
 
-With **Ask to check out checked-in files (Vault)** ticked (in Settings; off by default), AutoDraw looks before
+With **Ask to check out checked-in files (Vault)** ticked (in Settings; on by default), AutoDraw looks before
 **Generate drawing**, **Update drawing** and **Numbering…** for files it would write that are read-only (checked in)
 and asks whether to check them out. Yes runs Vault's **Check Out** on the drawing and the
 models, where the files are ticked; No goes on without them (they are not written). Unticked, nothing is checked:

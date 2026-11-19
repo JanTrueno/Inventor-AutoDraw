@@ -64,7 +64,7 @@ namespace AutoDraw.Core
         public bool SettingsOpen { get; set; }
 
         /// <summary>Before writing: look for checked-in (read-only) files and ask whether to check them out in Vault.</summary>
-        public bool AskCheckOut { get; set; }
+        public bool AskCheckOut { get; set; } = true;
 
         public int WindowX { get; set; } = -1;
         public int WindowY { get; set; } = -1;
