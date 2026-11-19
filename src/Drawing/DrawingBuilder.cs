@@ -93,13 +93,22 @@ namespace AutoDraw.Drawing
                 try { drawing.Sheets[1].Activate(); } catch { }
 
                 try { OnSheet?.Invoke(jobs.Count, jobs.Count, ""); } catch { }
-                progress("Saving…");
                 string folder = Path.GetDirectoryName(assemblies[0].FullFileName) ?? "";
                 string path = Naming.DrawingPath(folder, order, root.Name, DateTime.Now);
-                bool silent = _app.SilentOperation;
-                _app.SilentOperation = true;
-                try { drawing.SaveAs(path, false); }
-                finally { _app.SilentOperation = silent; }
+                if (_settings.SaveDrawing)
+                {
+                    progress("Saving…");
+                    bool silent = _app.SilentOperation;
+                    _app.SilentOperation = true;
+                    try { drawing.SaveAs(path, false); }
+                    finally { _app.SilentOperation = silent; }
+                }
+                else
+                {
+                    // not saved: the name is set, so Save puts it where it would have been saved
+                    try { ((Document)drawing).FullFileName = path; }
+                    catch (Exception ex) { Log.Write("Setting the drawing's file name failed: " + ex.Message); }
+                }
                 drawing.Views.Add();   // show it
                 done = true;
                 RunRules((Document)drawing, progress);
@@ -229,12 +238,15 @@ namespace AutoDraw.Drawing
                 }
                 try { drawing.Sheets[1].Activate(); } catch { }
 
-                progress("Saving…");
-                bool silent = _app.SilentOperation;
-                _app.SilentOperation = true;
-                try { ((Document)drawing).Save(); }
-                catch (Exception ex) { Warnings.Add("Saving the drawing failed: " + ex.Message); }
-                finally { _app.SilentOperation = silent; }
+                if (_settings.SaveDrawing)
+                {
+                    progress("Saving…");
+                    bool silent = _app.SilentOperation;
+                    _app.SilentOperation = true;
+                    try { ((Document)drawing).Save(); }
+                    catch (Exception ex) { Warnings.Add("Saving the drawing failed: " + ex.Message); }
+                    finally { _app.SilentOperation = silent; }
+                }
                 RunRules((Document)drawing, progress);
             }
             finally
@@ -360,6 +372,7 @@ namespace AutoDraw.Drawing
                     Warnings.Add("iLogic rule " + rule + ": " + inner.Message);
                 }
             }
+            if (!_settings.SaveDrawing) return;
             bool silent = _app.SilentOperation;
             _app.SilentOperation = true;
             try { drawing.Save(); }

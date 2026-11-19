@@ -68,6 +68,9 @@ namespace AutoDraw.Core
         /// <summary>Before writing: look for checked-in (read-only) files and ask whether to check them out in Vault.</summary>
         public bool AskCheckOut { get; set; } = true;
 
+        /// <summary>Save the drawing when it is made or updated. Off: it stays open unsaved, with its file name set, for the user to save.</summary>
+        public bool SaveDrawing { get; set; }
+
         public int WindowX { get; set; } = -1;
         public int WindowY { get; set; } = -1;
         public int WindowW { get; set; } = 1280;

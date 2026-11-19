@@ -42,7 +42,7 @@ namespace AutoDraw.UI
         private readonly FieldBox _large;
         private readonly FieldBox _drawingOrder;
         private readonly FieldBox _orderProp;
-        private CheckBox _askCheckOut;
+        private CheckBox _askCheckOut, _saveDrawing;
         private Label _orderCaption;
         private readonly FieldBox _sheetName;
         private readonly FieldBox _rules;
@@ -119,6 +119,9 @@ namespace AutoDraw.UI
                     case "sheetmetal": break;   // handled when the files were opened (Automation.OpenWith)
                     case "askcheckout":
                         if (WindowOptions.Bool(v) is bool ask) _askCheckOut.Checked = ask; else problems.Add(kv.Key + "=" + v);
+                        break;
+                    case "savedrawing": case "save":
+                        if (WindowOptions.Bool(v) is bool save) _saveDrawing.Checked = save; else problems.Add(kv.Key + "=" + v);
                         break;
                     default:
                         DocKind? kind = WindowOptions.Kind(kv.Key);
@@ -368,6 +371,14 @@ namespace AutoDraw.UI
             };
             askCheckOut.CheckedChanged += (s, e) => { _settings.AskCheckOut = askCheckOut.Checked; _settings.Save(); };
             more.Controls.Add(askCheckOut);
+
+            var saveDrawing = _saveDrawing = new CheckBox
+            {
+                Text = "Save the drawing when it is made", Size = new Size(w, 24), Margin = new Padding(0, 4, 0, 0),
+                ForeColor = _theme.Text, BackColor = _theme.Back, FlatStyle = FlatStyle.Flat, Checked = _settings.SaveDrawing
+            };
+            saveDrawing.CheckedChanged += (s, e) => { _settings.SaveDrawing = saveDrawing.Checked; _settings.Save(); };
+            more.Controls.Add(saveDrawing);
             Fold();
 
             _thumb.Size = new Size(w, w);   // square, like the thumbnails _thumb.SizeMode = PictureBoxSizeMode.Zoom; _thumb.BackColor = _theme.Field;
@@ -875,7 +886,8 @@ namespace AutoDraw.UI
                 if (_cancel) SetStatus("Cancelled; no drawing saved.", false);
                 return;
             }
-            Report(builder, "Saved " + Path.GetFileName(path) + " (" + jobs.Count + " sheets).");
+            Report(builder, (_settings.SaveDrawing ? "Saved " + Path.GetFileName(path)
+                : "Drawing made, not saved (Save puts it at " + Path.GetFileName(path) + ")") + " (" + jobs.Count + " sheets).");
         }
 
         /// <summary>

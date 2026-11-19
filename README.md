@@ -12,8 +12,9 @@ part type, parts lists with balloons, overall dimensions and, on flat patterns, 
    **Sheets** of an assembly or any added iProperty column (**Columns…**).
    Values changed by hand are bold and coloured, with the original as tooltip; **Delete** on such a cell puts it back,
    and right-click resets the cell, the row or every change in the tree.
-5. **Generate drawing**. The drawing is saved next to the assembly as `<ordernummer>_<assembly>_<y-M-d>.idw`
-   (`_2`, `_3` … when that name is taken) and opened.
+5. **Generate drawing**. The drawing opens unsaved, named `<ordernummer>_<assembly>_<y-M-d>.idw` next to the
+   assembly (`_2`, `_3` … when that name is taken), so **Save** puts it there. With **Save the drawing when it is
+   made** ticked (Settings) AutoDraw saves it itself, also after **Update drawing**.
 
 ## Several models, loose parts
 
@@ -25,7 +26,7 @@ tree gets a top row `A+B+…` without a sheet, with each model under it as if it
 - sheets: the assemblies first, then all parts by type, as usual; a part used in several assemblies has one sheet,
   with the total quantity;
 - **Numbering…**: the assemblies get 100, 200, 300 …, their sub-assemblies 110, 120 … (the top row has no number);
-- the order number is written to every assembly; the drawing is saved next to the first one as
+- the order number is written to every assembly; the drawing is named after (and saved next to) the first one as
   `<ordernummer>_A+B_<date>.idw` (`A+2 more` when the names get long);
 - the drawing remembers its assemblies (custom iProperty `AutoDraw Assemblies`), so **Update drawing** opens for all
   of them again. **Models…** also adds or takes out a model there; ticks, types and typed values are kept.
@@ -71,6 +72,7 @@ ad.OpenWith(r"C:\x\frame.stp", '{"order": "160261777", "Bent": true, "askCheckOu
 | `drawingProperty`, `sheetName` | iProperty names |
 | `rules` | iLogic rules, separated by `,` |
 | `askCheckOut` | `on`/`off` |
+| `saveDrawing` | `on`/`off`: save the drawing when it is made (off by default) |
 | `sheetMetal` | `on`: the files are sheet metal (e.g. from CADMAN); plain solids of one thin thickness become sheet metal parts |
 | `Assembly`, `Bent`, `Flat`, `Lathe`, `Tube`, `General` | `on`/`off`: the type ticks |
 
@@ -95,7 +97,8 @@ assembly (the one shown on its first sheet); documents with a sheet in the drawi
 - **Numbering…** works as from the assembly; the new numbers sort the sheets on the next update.
 - **Update drawing** writes the iProperties again, makes the new and redone sheets, asks before deleting sheets of
   unticked documents and of documents no longer in the assembly (No keeps them at the end), puts all sheets in order
-  (type, then part number), renames them, runs the iLogic rules and saves the drawing.
+  (type, then part number), renames them and runs the iLogic rules; the drawing is saved only with **Save the
+  drawing when it is made** ticked.
 
 ## What it writes
 
