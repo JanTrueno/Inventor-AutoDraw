@@ -352,11 +352,6 @@ namespace AutoDraw.Drawing
             double spanX = outline.Count > 0 ? outline.Max(k => k.MaxX) - outline.Min(k => k.MinX) : 0;
             double spanY = outline.Count > 0 ? outline.Max(k => k.MaxY) - outline.Min(k => k.MinY) : 0;
 
-            if (System.Environment.GetEnvironmentVariable("AUTODRAW_TRACE") == "1")
-            {
-                Log.Write($"Legs: diag {diag:0.00} minLen {minLen:0.00}; {all.Count} lines, {facets.Count} facets, {lines.Count} long, {inner.Count} inner, {outer.Count} outer");
-                foreach (Curve k in all) Log.Write($"  line ({k.SX:0.00},{k.SY:0.00})-({k.EX:0.00},{k.EY:0.00}) len {Len(k):0.00}{(facets.Contains(k) ? " facet" : "")}{(inner.Contains(k) ? " inner" : "")}{(outer.Contains(k) ? " OUTER" : "")}");
-            }
             foreach (Curve o in outer)
             {
                 bool flat = Math.Abs(o.SY - o.EY) < 1e-4, upright = Math.Abs(o.SX - o.EX) < 1e-4;
@@ -528,7 +523,7 @@ namespace AutoDraw.Drawing
                 if (r != null) anchors.Add((r, rx));
                 if (Crowded(anchors))
                 {
-                    Ordinate(view, anchors, true, box.MinY - Gap, -1, box.MinX, box.MaxX);
+                    Ordinate(anchors, true, box.MinY - Gap, -1);
                     Chain(Sparse(anchors), true, box.MaxY + Gap, 1);   // the separate bends, above
                 }
                 else Chain(anchors, true, box.MinY - Gap, -1);
@@ -546,7 +541,7 @@ namespace AutoDraw.Drawing
                 if (t != null) anchors.Add((t, ty));
                 if (Crowded(anchors))
                 {
-                    Ordinate(view, anchors, false, box.MaxX + Gap, 1, box.MinY, box.MaxY);
+                    Ordinate(anchors, false, box.MaxX + Gap, 1);
                     Chain(Sparse(anchors), false, box.MinX - Gap, -1);   // the separate bends, left
                 }
                 else Chain(anchors, false, box.MaxX + Gap, 1);
@@ -620,247 +615,35 @@ namespace AutoDraw.Drawing
         }
 
         /// <summary>
-        /// Ordinate dimensions (0 at the first edge) instead of a chain, for bend lines close together: the texts are
-        /// spread out along the line with a jog to their bend line, within the length of the part (lo..hi); when they do
-        /// not fit there at the normal spacing, closer together in smaller text.
+        /// Ordinate dimensions (0 at the first edge) instead of a chain, for bend lines close together: one ordinate set,
+        /// easy to edit in Inventor. Inventor spaces its texts; the text column stands well away from the part
+        /// (<see cref="OrdinateReach"/>), so the leaders run sideways and the bend lines stay easy to follow. When the
+        /// set cannot be made, a chain.
         /// </summary>
-        private void Ordinate(DrawingView view, List<(GeometryIntent I, double At)> anchors, bool horizontal, double line, double outward, double lo, double hi)
+        private void Ordinate(List<(GeometryIntent I, double At)> anchors, bool horizontal, double line, double outward)
         {
             if (anchors.Count < 2) return;
-            if (OrdinateSingles(view, anchors, horizontal, line, outward, lo, hi)) return;
-            OrdinateDimensionSet set;
+            var sorted = anchors.OrderBy(a => a.At).ToList();
+            double column = line + outward * OrdinateReach, mid = (sorted[0].At + sorted[sorted.Count - 1].At) / 2;
             try
             {
                 ObjectCollection intents = _to.CreateObjectCollection();
-                foreach (var a in anchors) intents.Add(a.I);
-                double mid = (anchors.Min(a => a.At) + anchors.Max(a => a.At)) / 2;
-                Point2d place = horizontal ? _tg.CreatePoint2d(mid, line) : _tg.CreatePoint2d(line, mid);
-                set = _sheet.DrawingDimensions.OrdinateDimensionSets.Add(intents, place,
+                foreach (var a in sorted) intents.Add(a.I);
+                OrdinateDimensionSet set = _sheet.DrawingDimensions.OrdinateDimensionSets.Add(intents,
+                    horizontal ? _tg.CreatePoint2d(mid, column) : _tg.CreatePoint2d(column, mid),
                     horizontal ? DimensionTypeEnum.kHorizontalDimensionType : DimensionTypeEnum.kVerticalDimensionType, Type.Missing, Type.Missing);
                 try { set.Precision = Precision; } catch (Exception ex) { Log.Write("Setting the ordinate precision failed: " + ex.Message); }
-                try { set.AlignMembers = false; } catch (Exception ex) { Log.Write("Unaligning the ordinate texts failed: " + ex.Message); }
+                if (!horizontal && outward > 0) RightUsed = Math.Max(RightUsed, column + 3.0);   // the texts (about 1.5 cm wide) and a margin
             }
             catch (Exception ex)
             {
                 Log.Write("Ordinate dimensions failed (" + ex.Message + "); a chain instead");
                 Chain(anchors, horizontal, line, outward);
-                return;
-            }
-
-            // each text belongs to a bend line (Inventor has already moved the texts apart, in the same order); where it
-            // goes: pushed apart to at least the pitch, within lo..hi
-            var placed = new List<(OrdinateDimension D, double Text)>();
-            foreach (OrdinateDimension m in set.Members)
-            {
-                try { Point2d o = m.Text.Origin; placed.Add((m, horizontal ? o.X : o.Y)); } catch { }
-            }
-            List<double> lines = anchors.Select(a => a.At).OrderBy(x => x).ToList();
-            if (placed.Count != lines.Count) { Log.Write("Ordinate set: " + placed.Count + " texts for " + lines.Count + " lines; left as Inventor placed them"); return; }
-            var members = placed.OrderBy(p => p.Text).Select((p, i) => (p.D, At: lines[i])).ToList();
-            double pitch = members.Count > 1 ? Math.Min(TextPitch, (hi - lo) / (members.Count - 1)) : TextPitch;
-            double[] spread = Fit(Spread(members.Select(m => m.At).ToArray(), pitch), pitch, lo, hi);
-            // Inventor keeps ordinate texts about two text heights apart, whatever position they are given: when that is
-            // more than the spacing that fits the part's length, the text gets smaller
-            double font = 0.35;
-            try { font = set.Style.TextStyle.FontSize; } catch { }
-            if (font * 2.05 > pitch)
-            {
-                // a copy of the dimension style with a smaller text style (a size override per text is refused)
-                double size = Math.Max(0.15, Math.Floor(pitch / 2.05 * 200) / 200);   // cm, in steps of 0.05 mm
-                try
-                {
-                    var styles = ((DrawingDocument)_sheet.Parent).StylesManager;
-                    string mm = (size * 10).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-                    DimensionStyle small = null;
-                    foreach (DimensionStyle s in styles.DimensionStyles) if (s.Name == "AutoDraw ordinate " + mm) { small = s; break; }
-                    if (small == null)
-                    {
-                        small = (DimensionStyle)set.Style.Copy("AutoDraw ordinate " + mm);
-                        var text = (TextStyle)small.TextStyle.Copy("AutoDraw ordinate text " + mm);
-                        text.FontSize = size;
-                        small.TextStyle = text;
-                        if (System.Environment.GetEnvironmentVariable("AUTODRAW_TRACE") == "1")
-                            Log.Write($"ordinate style: gap {small.Gap:0.000} spacing {small.Spacing:0.000} font {size:0.000}");
-                        try { small.Gap = Math.Min(small.Gap, 0.05); } catch { }
-                        try { small.OrdinateJoggingAllowed = false; } catch (Exception ex) { Log.Write("jog off: " + ex.Message); }
-                    }
-                    set.Style = small;
-                }
-                catch (Exception ex) { Log.Write("Smaller ordinate text failed: " + ex.Message); }
-            }
-            double jogFrom = line - outward * 0.2, jogTo = line + outward * 0.35, textAt = line + outward * 0.45;
-            if (!horizontal && outward > 0) RightUsed = Math.Max(RightUsed, textAt + 1.6);   // the texts, about 1.5 cm wide
-            for (int i = 0; i < members.Count; i++)
-            {
-                OrdinateDimension d = members[i].D;
-                try
-                {
-                    d.JogPointOne = horizontal ? _tg.CreatePoint2d(members[i].At, jogFrom) : _tg.CreatePoint2d(jogFrom, members[i].At);
-                    d.JogPointTwo = horizontal ? _tg.CreatePoint2d(spread[i], jogTo) : _tg.CreatePoint2d(jogTo, spread[i]);
-                    d.Text.Origin = horizontal ? _tg.CreatePoint2d(spread[i], textAt) : _tg.CreatePoint2d(textAt, spread[i]);
-                    if (System.Environment.GetEnvironmentVariable("AUTODRAW_TRACE") == "1")
-                    {
-                        Point2d o = d.Text.Origin;
-                        Log.Write($"ordinate {i}: line {members[i].At:0.00} wanted {spread[i]:0.00} now {(horizontal ? o.X : o.Y):0.00} (lo {lo:0.00} hi {hi:0.00} pitch {pitch:0.00})");
-                    }
-                }
-                catch (Exception ex) { Log.Write("Moving an ordinate text failed: " + ex.Message); }
             }
         }
 
-        /// <summary>
-        /// Separate ordinate dimensions from an origin mark on the first edge: unlike a set, Inventor leaves their texts
-        /// where they are put, so they are spread at the spacing that fits the part's length. False when they cannot be made.
-        /// </summary>
-        private bool OrdinateSingles(DrawingView view, List<(GeometryIntent I, double At)> anchors, bool horizontal, double line, double outward, double lo, double hi)
-        {
-            var sorted = anchors.OrderBy(a => a.At).ToList();
-            var made = new List<OrdinateDimension>();
-            try
-            {
-                if (!view.HasOriginIndicator)
-                {
-                    GeometryIntent origin = sorted[0].I;
-                    // the origin mark needs a point: the start of the first edge (it lies at the edge's position)
-                    if (origin.Geometry is DrawingCurve c && !(origin.Intent is PointIntentEnum))
-                        origin = _sheet.CreateGeometryIntent(c, PointIntentEnum.kStartPointIntent);
-                    try { view.CreateOriginIndicator(origin); } catch (Exception ex) { throw new Exception("origin mark: " + ex.Message); }
-                }
-                else Log.Write("The flat pattern has an origin mark already; ordinate dimensions measure from it");
-
-                // each text at its own line, in text small enough for the closest two lines (at least 1.8 mm high);
-                // only when lines are closer than that, the texts go at equal steps over the part's length with a jog
-                // (Inventor drops a jog that moves a text only a little, so small shifts are not possible)
-                double first = sorted[0].At, last = sorted[sorted.Count - 1].At;
-                double minGap = double.MaxValue;
-                for (int i = 0; i + 1 < sorted.Count; i++) minGap = Math.Min(minGap, sorted[i + 1].At - sorted[i].At);
-                bool atLines = minGap * 0.8 >= 0.18;
-                double pitch = atLines ? minGap : sorted.Count > 1 ? (last - first) / (sorted.Count - 1) : TextPitch;
-                double[] spread = atLines ? sorted.Select(a => a.At).ToArray() : sorted.Select((a, i) => first + i * pitch).ToArray();
-                // a steep jog: Inventor drops a jog that turns only a little
-                double jogFrom = line - outward * 0.1, jogTo = line + outward * 0.05, textAt = line + outward * 0.45;
-                // a separate ordinate's type names the direction of its leader, not of what it measures
-                DimensionTypeEnum type = horizontal ? DimensionTypeEnum.kVerticalDimensionType : DimensionTypeEnum.kHorizontalDimensionType;
-                DimensionStyle small = null;
-                for (int i = 0; i < sorted.Count; i++)
-                {
-                    Point2d text = horizontal ? _tg.CreatePoint2d(spread[i], textAt) : _tg.CreatePoint2d(textAt, spread[i]);
-                    OrdinateDimension d;
-                    GeometryIntent at = sorted[i].I;
-                    if (at.Geometry is DrawingCurve curve && !(at.Intent is PointIntentEnum))
-                    {
-                        // a separate ordinate needs a point: the end of the line on the side of the texts
-                        bool startNearer = true;
-                        try
-                        {
-                            Point2d sp = curve.StartPoint, ep = curve.EndPoint;
-                            double s = horizontal ? sp.Y : sp.X, e = horizontal ? ep.Y : ep.X;
-                            startNearer = outward > 0 ? s >= e : s <= e;
-                        }
-                        catch { }
-                        at = _sheet.CreateGeometryIntent(curve, startNearer ? PointIntentEnum.kStartPointIntent : PointIntentEnum.kEndPointIntent);
-                    }
-                    try { d = _sheet.DrawingDimensions.OrdinateDimensions.Add(at, text, type, Type.Missing, Type.Missing); }
-                    catch (Exception ex)
-                    {
-                        if (i == 0) { Log.Write("Ordinate 0 at the origin not made: " + ex.Message); continue; }   // the origin mark shows it
-                        throw new Exception("dimension " + i + " (" + Describe(sorted[i].I) + "): " + ex.Message);
-                    }
-                    made.Add(d);
-                    try { d.Precision = Precision; } catch { }
-                    // text at most 80% of the spacing high, so neighbouring texts keep a gap
-                    if (small == null)
-                    {
-                        double font = 0.35;
-                        try { font = d.Style.TextStyle.FontSize; } catch { }
-                        small = font > pitch * 0.8 ? SmallStyle(d.Style, pitch * 0.8) : d.Style;
-                    }
-                    if (small != d.Style) { try { d.Style = small; } catch (Exception ex) { Log.Write("Smaller ordinate text failed: " + ex.Message); } }
-                    try { d.Precision = Precision; } catch { }   // again: the style sets its own
-                    if (!atLines) try
-                    {
-                        d.Text.Origin = text;
-                        d.JogPointOne =horizontal ? _tg.CreatePoint2d(sorted[i].At, jogFrom) : _tg.CreatePoint2d(jogFrom, sorted[i].At);
-                        d.JogPointTwo = horizontal ? _tg.CreatePoint2d(spread[i], jogTo) : _tg.CreatePoint2d(jogTo, spread[i]);
-                        d.Text.Origin = text;
-                    }
-                    catch (Exception ex) { Log.Write("Jogging an ordinate text failed: " + ex.Message); }
-                    if (System.Environment.GetEnvironmentVariable("AUTODRAW_TRACE") == "1")
-                    {
-                        Point2d o = d.Text.Origin;
-                        Point2d j1 = null, j2 = null;
-                        try { j1 = d.JogPointOne; j2 = d.JogPointTwo; } catch { }
-                        Log.Write($"ordinate {i}: line {sorted[i].At:0.00} wanted {spread[i]:0.00} now {(horizontal ? o.X : o.Y):0.00} jog1 {(j1 == null ? "-" : (horizontal ? j1.X : j1.Y).ToString("0.00"))} jog2 {(j2 == null ? "-" : (horizontal ? j2.X : j2.Y).ToString("0.00"))} (pitch {pitch:0.00})");
-                    }
-                }
-                if (!horizontal && outward > 0) RightUsed = Math.Max(RightUsed, textAt + 1.6);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Log.Write("Separate ordinate dimensions failed (" + ex.Message + "); an ordinate set instead");
-                foreach (OrdinateDimension d in made) { try { d.Delete(); } catch { } }
-                return false;
-            }
-        }
-
-        /// <summary>A copy of a dimension style with smaller text (cm), made once per size; the style itself when that fails.</summary>
-        private DimensionStyle SmallStyle(DimensionStyle source, double size)
-        {
-            size = Math.Max(0.15, Math.Floor(size * 200) / 200);   // steps of 0.05 mm, at least 1.5 mm
-            string mm = (size * 10).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-            try
-            {
-                var styles = ((DrawingDocument)_sheet.Parent).StylesManager;
-                foreach (DimensionStyle s in styles.DimensionStyles) if (s.Name == "AutoDraw ordinate " + mm) return s;
-                var small = (DimensionStyle)source.Copy("AutoDraw ordinate " + mm);
-                var text = (TextStyle)small.TextStyle.Copy("AutoDraw ordinate text " + mm);
-                text.FontSize = size;
-                small.TextStyle = text;
-                return small;
-            }
-            catch (Exception ex) { Log.Write("Smaller ordinate style failed: " + ex.Message); return source; }
-        }
-
-        /// <summary>Spread positions moved inside lo..hi, still at least <paramref name="pitch"/> apart.</summary>
-        internal static double[] Fit(double[] at, double pitch, double lo, double hi)
-        {
-            var r = (double[])at.Clone();
-            int n = r.Length;
-            if (n == 0) return r;
-            r[n - 1] = Math.Min(r[n - 1], hi);
-            for (int i = n - 2; i >= 0; i--) r[i] = Math.Min(r[i], r[i + 1] - pitch);
-            r[0] = Math.Max(r[0], lo);
-            for (int i = 1; i < n; i++) r[i] = Math.Max(r[i], r[i - 1] + pitch);
-            return r;
-        }
-
-        /// <summary>Positions at least <paramref name="pitch"/> apart, each group of pushed texts centred on its originals.</summary>
-        internal static double[] Spread(double[] at, double pitch)
-        {
-            int n = at.Length;
-            var groups = new List<(int From, int To, double Start)>();
-            for (int i = 0; i < n; i++)
-            {
-                groups.Add((i, i, at[i]));
-                // merge with the group before while they overlap; a merged group is centred on its members
-                while (groups.Count > 1)
-                {
-                    var b = groups[groups.Count - 1];
-                    var a = groups[groups.Count - 2];
-                    if (a.Start + (a.To - a.From + 1) * pitch <= b.Start + 1e-9) break;
-                    int from = a.From, to = b.To;
-                    double mean = 0;
-                    for (int k = from; k <= to; k++) mean += at[k] - (k - from) * pitch;
-                    groups.RemoveRange(groups.Count - 2, 2);
-                    groups.Add((from, to, mean / (to - from + 1)));
-                }
-            }
-            var result = new double[n];
-            foreach (var g in groups) for (int k = g.From; k <= g.To; k++) result[k] = g.Start + (k - g.From) * pitch;
-            return result;
-        }
-
+        /// <summary>How far (cm) beyond the dimension line the ordinate texts stand: longer, flatter leaders.</summary>
+        private const double OrdinateReach = 2.0;
         /// <summary>
         /// Bend notes of bend lines close together, which Inventor puts at the middle of each line, on top of each other:
         /// moved along their lines into columns, so neighbouring lines have their notes side by side.
