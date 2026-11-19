@@ -408,7 +408,7 @@ namespace AutoDraw.Drawing
             // a plain solid typed (or detected) as bent or flat sheet, e.g. an imported STEP, becomes sheet metal first
             foreach (SheetJob j in jobs.Where(j => j.Part == 0 && (j.Node.Kind == DocKind.SheetMetalFolded || j.Node.Kind == DocKind.SheetMetalFlat)))
             {
-                if (!(j.Node.Doc is PartDocument plain) || SheetMetalConvert.IsFinishedSheetMetal(plain)) continue;
+                if (!(j.Node.Doc is PartDocument plain) || SheetMetalConvert.IsFinishedSheetMetal(plain) || !SheetMetalConvert.IsImported(plain)) continue;
                 if (SheetMetalConvert.Convert(plain, out string why)) changed.Add(j.Node.Doc);
                 else Warnings.Add(j.Node.Name + ": not converted to sheet metal (" + why + ")");
             }
@@ -633,7 +633,8 @@ namespace AutoDraw.Drawing
             DrawingView[] folded = new[] { v.Base, v.Below, v.Side }.Where(x => x != null).ToArray();
             var profiles = ProfileViews(doc, v);
             d.Overall(v.Base, true, true, profiles.Contains(v.Base) ? 1 : 0);
-            if (v.Below != null) d.Overall(v.Below, false, true, profiles.Contains(v.Below) ? 1 : 0);
+            // the top view gets its length too (not only its width), as on the hand-made drawings
+            if (v.Below != null) d.Overall(v.Below, true, true, profiles.Contains(v.Below) ? 1 : 0);
             if (v.Side != null) d.Overall(v.Side, true, false, profiles.Contains(v.Side) ? 1 : 0);
             foreach (DrawingView view in profiles) d.Legs(view);
             foreach (DrawingView view in folded) d.Angles(view, profiles.Contains(view));
@@ -654,7 +655,8 @@ namespace AutoDraw.Drawing
             d.Overall(flat.Base, true, true, 1);
             d.FlatPattern(flat.Base);
             d.HoleNotes(flat.Base);
-            if (flat.Side != null) d.Overall(flat.Side, true, false);
+            d.ClearRight(flat.Side);
+            if (flat.Side != null) d.Overall(flat.Side, true, false);   // the thickness
         }
 
         private void General(Sheet sheet, SheetFrame f, Document doc)

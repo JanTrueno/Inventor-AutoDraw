@@ -19,20 +19,42 @@ namespace AutoDraw.Drawing
             {
                 PartComponentDefinition def = part.ComponentDefinition;
                 if (KindDetector.SolidCount(def) != 1) return 0;
-                double volume = 0, area = 0;
+                double volume = 0, area = 0, faces = 0;
                 foreach (SurfaceBody b in def.SurfaceBodies)
                 {
                     if (b.Faces.Count == 0) continue;
                     volume += b.Volume[0.001];
                     foreach (Face f in b.Faces) area += f.Evaluator.Area;
+                    faces = Thickness.OfFaces(b);
                 }
                 if (volume <= 0 || area <= 0) return 0;
-                double t = Math.Round(2 * volume / area * 100) / 100.0;   // cm, to 0.1 mm
+                double rough = 2 * volume / area;   // a little too thin, but tells a sheet from a block
+                // the distance between the sheet's faces, when it agrees with the rough measure
+                double t = faces > 0 && faces >= rough * 0.8 && faces <= rough * 1.3 ? faces : Math.Round(rough * 100) / 100.0;
                 KindDetector.ShortestAxis(def.RangeBox, out double shortest, out double middle);
                 // thin: at most 25 mm, and small next to the part (a block or a bar is not a sheet)
                 return t > 0 && t <= 2.5 && t <= 0.25 * middle ? t : 0;
             }
             catch (Exception ex) { Log.Write("Measuring the sheet thickness failed: " + ex.Message); return 0; }
+        }
+
+        /// <summary>
+        /// An imported part (a STEP or other neutral file): its solid is an imported base body, not modelled with
+        /// Inventor features. Only these are measured and converted; parts modelled in Inventor are left as they are.
+        /// </summary>
+        public static bool IsImported(PartDocument part)
+        {
+            try
+            {
+                PartComponentDefinition def = part.ComponentDefinition;
+                PartFeatures features = def.Features;
+                int imported = 0;
+                try { imported += features.NonParametricBaseFeatures.Count; } catch { }
+                try { imported += features.ReferenceFeatures.Count; } catch { }
+                try { imported += def.ReferenceComponents.ImportedComponents.Count; } catch { }
+                return imported > 0;
+            }
+            catch { return false; }
         }
 
         public static bool IsSheetMetal(PartDocument part) =>
@@ -58,6 +80,7 @@ namespace AutoDraw.Drawing
         {
             why = null;
             if (IsFinishedSheetMetal(part)) return true;
+            if (!IsImported(part)) { why = "modelled in Inventor, not imported: make it sheet metal in Inventor"; return false; }
             double t = SheetThickness(part);
             if (t <= 0) { why = "not one solid of one thin thickness"; return false; }
             string mm = (t * 10).ToString("0.#", CultureInfo.InvariantCulture) + " mm";

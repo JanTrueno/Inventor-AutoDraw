@@ -9,6 +9,10 @@
     <!-- the dimensioning code itself, to try it on a copy of a drawing (mode redim) -->
     <Compile Include="..\..\src\Drawing\Dimensioner.cs" Link="Dimensioner.cs" />
     <Compile Include="..\..\src\Core\Log.cs" Link="Log.cs" />
+    <Compile Include="..\..\src\Drawing\Thickness.cs" Link="Thickness.cs" />
+    <Compile Include="..\..\src\Drawing\SheetMetalConvert.cs" Link="SheetMetalConvert.cs" />
+    <Compile Include="..\..\src\Core\KindDetector.cs" Link="KindDetector.cs" />
+    <Compile Include="..\..\src\Core\DocNode.cs" Link="DocNode.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Microsoft.CSharp" />

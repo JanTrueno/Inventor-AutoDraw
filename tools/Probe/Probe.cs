@@ -35,6 +35,33 @@ internal static class Probe
         if (args[0] == "import") return Import(app, args[1]);
         if (args[0] == "tosheet") return ToSheet(app, args[1]);
         if (args[0] == "redim") return Redim(app, args[1], args[2]);
+        if (args[0] == "convert")
+        {
+            // imports a STEP to a copy .ipt next to it, converts it as AutoDraw does and prints the detected type
+            app.SilentOperation = true;
+            var d = app.Documents.Open(args[1], false);
+            string ipt = System.IO.Path.ChangeExtension(args[1], ".ipt");
+            if (System.IO.File.Exists(ipt)) System.IO.File.Delete(ipt);
+            d.SaveAs(ipt, false);
+            var p = (PartDocument)app.Documents.Open(ipt, false);
+            Console.WriteLine("imported: " + AutoDraw.Drawing.SheetMetalConvert.IsImported(p) + ", thickness " + AutoDraw.Drawing.SheetMetalConvert.SheetThickness(p) * 10 + " mm");
+            Console.WriteLine("convert: " + AutoDraw.Drawing.SheetMetalConvert.Convert(p, out string why) + " " + why);
+            Console.WriteLine("type: " + AutoDraw.Core.KindDetector.Detect((Document)p));
+            p.Close(true);
+            return 0;
+        }
+        if (args[0] == "thick")
+        {
+            var p = (PartDocument)app.Documents.Open(args[1], false);
+            foreach (SurfaceBody b in p.ComponentDefinition.SurfaceBodies)
+            {
+                double area = 0; foreach (Face f in b.Faces) area += f.Evaluator.Area;
+                Console.WriteLine($"faces: {AutoDraw.Drawing.Thickness.OfFaces(b) * 10:0.00} mm   2V/A: {20 * b.Volume[0.001] / area:0.000} mm");
+            }
+            if (p.ComponentDefinition is SheetMetalComponentDefinition sm) Console.WriteLine($"sheet metal {sm.Thickness.Expression}, bends {sm.Bends.Count}, flat {sm.HasFlatPattern}");
+            p.Close(true);
+            return 0;
+        }
         if (args[0] == "activate") { var ai = app.ApplicationAddIns.ItemById[args[1]]; try { ai.Activate(); Console.WriteLine("active=" + ai.Activated); } catch (Exception ex) { Console.WriteLine(ex); } return 0; }
         return 1;
     }
@@ -346,8 +373,21 @@ internal static class Probe
                 Console.WriteLine($"view {v.Name} arcs={a} {v.Width:0.0}x{v.Height:0.0}");
                 if (a > arcs) { arcs = a; profile = v; }
             }
+            foreach (DrawingView v in sheet.DrawingViews)
+                if (v != profile && v != flat && Math.Min(v.Width, v.Height) >= 0.5 && !v.Camera.ViewOrientationType.ToString().Contains("Iso")) dim.Overall(v, true, true);
             if (profile != null) { dim.Overall(profile, true, true, 1); dim.Legs(profile); dim.Angles(profile, true); }
-            if (flat != null) { dim.Overall(flat, true, true, 1); dim.FlatPattern(flat); }
+            if (flat != null)
+            {
+                dim.Overall(flat, true, true, 1);
+                dim.FlatPattern(flat);
+                // the edge view: the thin view right of the flat pattern
+                DrawingView edge = null;
+                foreach (DrawingView v in sheet.DrawingViews)
+                    if (v != flat && v.Center.X > flat.Center.X + flat.Width / 2 && Math.Min(v.Width, v.Height) < 0.5 && Math.Abs(v.Center.Y - flat.Center.Y) < 1) edge = v;
+                Console.WriteLine("edge view: " + (edge?.Name ?? "none"));
+                dim.ClearRight(edge);
+                if (edge != null) dim.Overall(edge, true, false);
+            }
             Console.WriteLine($"general={sheet.DrawingDimensions.GeneralDimensions.Count} ordinate sets={sheet.DrawingDimensions.OrdinateDimensionSets.Count} bend notes={sheet.DrawingNotes.BendNotes.Count}");
             d.SaveAs(pdf, true);
             Console.WriteLine("pdf: " + pdf);

@@ -120,7 +120,8 @@ namespace AutoDraw
             {
                 foreach (PartDocument p in parts.Distinct())
                 {
-                    if (Drawing.SheetMetalConvert.IsFinishedSheetMetal(p) ||Drawing.SheetMetalConvert.SheetThickness(p) <= 0) continue;
+                    if (Drawing.SheetMetalConvert.IsFinishedSheetMetal(p) || !Drawing.SheetMetalConvert.IsImported(p) ||
+                        Drawing.SheetMetalConvert.SheetThickness(p) <= 0) continue;
                     if (!Drawing.SheetMetalConvert.Convert(p, out string why)) { problems.Add(((Document)p).DisplayName + ": not converted to sheet metal (" + why + ")"); continue; }
                     try { ((Document)p).Save(); }
                     catch (Exception ex) { problems.Add(((Document)p).DisplayName + ": converted, not saved (" + ex.Message + ")"); }
