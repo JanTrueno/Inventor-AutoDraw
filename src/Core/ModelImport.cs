@@ -36,6 +36,7 @@ namespace AutoDraw.Core
             {
                 Document d = app.Documents.Open(path, false);
                 string target = Path.ChangeExtension(path, d is AssemblyDocument ? ".iam" : ".ipt");
+                Release(app, target);
                 d.SaveAs(target, false);
                 Log.Write("Imported " + path + " as " + target);
                 // the imported document's object does not survive the Save As (every call then fails with E_FAIL):
@@ -43,6 +44,26 @@ namespace AutoDraw.Core
                 return app.Documents.Open(target, false);
             }
             finally { app.SilentOperation = silent; }
+        }
+
+        /// <summary>
+        /// The file was deleted (the STEP is new) but Inventor can still hold a document of that name in memory, and then
+        /// Save As to it fails (E_INVALIDARG). A hidden, unchanged one is closed; one the user has open is not touched.
+        /// </summary>
+        private static void Release(Inventor.Application app, string target)
+        {
+            foreach (Document open in app.Documents)
+            {
+                string name;
+                try { name = open.FullFileName; } catch { continue; }
+                if (!string.Equals(name, target, StringComparison.OrdinalIgnoreCase)) continue;
+                if (open.Views.Count == 0 && !open.Dirty)
+                {
+                    try { open.Close(true); Log.Write("Closed the old " + target + " (hidden in Inventor) before the import"); return; }
+                    catch (Exception ex) { Log.Write("Closing the old " + target + " failed: " + ex.Message); }
+                }
+                throw new InvalidOperationException(Path.GetFileName(target) + " is still open in Inventor. Close it and try again.");
+            }
         }
     }
 }
