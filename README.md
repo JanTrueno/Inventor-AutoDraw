@@ -72,6 +72,7 @@ ad.OpenWith(r"C:\x\frame.stp", '{"order": "160261777", "Bent": true, "askCheckOu
 | `drawingProperty`, `sheetName` | iProperty names |
 | `rules` | iLogic rules, separated by `,` |
 | `askCheckOut` | `on`/`off` |
+| `quantities` | `name:6, other:2`: the Aantal of opened models (file name without extension), as if typed in the tree |
 | `saveDrawing` | `on`/`off`: save the drawing when it is made (off by default) |
 | `sheetMetal` | `on`: the files are sheet metal (e.g. from CADMAN); plain solids of one thin thickness become sheet metal parts |
 | `Assembly`, `Bent`, `Flat`, `Lathe`, `Tube`, `General` | `on`/`off`: the type ticks |

@@ -120,6 +120,9 @@ namespace AutoDraw.UI
                     case "askcheckout":
                         if (WindowOptions.Bool(v) is bool ask) _askCheckOut.Checked = ask; else problems.Add(kv.Key + "=" + v);
                         break;
+                    case "quantities": case "quantity": case "aantallen": case "aantal":
+                        problems.AddRange(SetQuantities(v));
+                        break;
                     case "savedrawing": case "save":
                         if (WindowOptions.Bool(v) is bool save) _saveDrawing.Checked = save; else problems.Add(kv.Key + "=" + v);
                         break;
@@ -514,6 +517,36 @@ namespace AutoDraw.UI
                 SetStatus("Reading the assembly failed: " + ex.Message, true);
             }
             finally { Cursor = Cursors.Default; }
+        }
+
+        /// <summary>
+        /// Option quantities: "name:6, other:2" (file name of an opened model, without folder or extension, and its
+        /// Aantal), typed into the tree as if by hand; everything below an assembly follows. Returns what did not match.
+        /// </summary>
+        private List<string> SetQuantities(string text)
+        {
+            var problems = new List<string>();
+            DocNode root = _reader?.Root;
+            if (root == null) return problems;
+            List<DocNode> tops = (root.IsVirtual ? root.Children.Where(c => !c.IsGroup) : new[] { root }).Where(t => t.Doc != null).ToList();
+            foreach (string item in text.Split(new[] { ',', '|' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                int colon = item.LastIndexOf(':');
+                string name = colon > 0 ? item.Substring(0, colon).Trim() : "";
+                if (colon <= 0 || !int.TryParse(item.Substring(colon + 1).Trim(), out int qty) || qty < 0) { problems.Add("quantities: " + item.Trim()); continue; }
+                DocNode top = tops.FirstOrDefault(t =>
+                {
+                    string file;
+                    try { file = Path.GetFileNameWithoutExtension(t.Doc.FullFileName); } catch { return false; }
+                    return string.Equals(file, name, StringComparison.OrdinalIgnoreCase) || string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase);
+                });
+                if (top == null) { problems.Add("quantities: no model " + name); continue; }
+                top.QuantityText = qty.ToString();
+            }
+            Quantities.Compute(_all);
+            _grid.Rebuild();
+            if (_grid.SelectedNode != null) ShowNode(_grid.SelectedNode);
+            return problems;
         }
 
         /// <summary>
