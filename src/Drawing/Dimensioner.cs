@@ -322,7 +322,9 @@ namespace AutoDraw.Drawing
         /// </summary>
         public void Legs(DrawingView view, int max = 12)
         {
-            List<Curve> all = Merge(Read(view).Where(k => k.IsLine && IsOutline(k)).ToList());
+            List<Curve> read = Read(view);
+            List<Curve> all = Merge(read.Where(k => k.IsLine && IsOutline(k)).ToList());
+            List<Curve> arcs = read.Where(k => k.Type == Curve2dTypeEnum.kCircularArcCurve2d && IsOutline(k)).ToList();
             HashSet<Curve> facets = Facets(all);
             double diag = Math.Sqrt(view.Width * view.Width + view.Height * view.Height);
             double minLen = Math.Max(0.2, diag * 0.03);
@@ -357,7 +359,7 @@ namespace AutoDraw.Drawing
                 bool flat = Math.Abs(o.SY - o.EY) < 1e-4, upright = Math.Abs(o.SX - o.EX) < 1e-4;
                 double reachEnds = Len(o) + 2 * Math.Max(0.1, diag * 0.02);   // up to the virtual sharps (bend radius)
                 if ((flat && spanX <= reachEnds && spanX >= Len(o) - 0.05) || (upright && spanY <= reachEnds && spanY >= Len(o) - 0.05)) continue;
-                GeometryIntent a = Anchor(o, true, all, facets, near, out bool bentA), b = Anchor(o, false, all, facets, near, out bool bentB);
+                GeometryIntent a = Anchor(o, true, all, arcs, facets, near, out bool bentA), b = Anchor(o, false, all, arcs, facets, near, out bool bentB);
                 if (!bentA && !bentB) continue;   // no bend at either end: a piece of a curve, not a leg
                 // a slanted piece next to a curve of small bends is part of that curve too
                 bool axis = Math.Abs(o.SY - o.EY) < 1e-4 || Math.Abs(o.SX - o.EX) < 1e-4;
@@ -410,18 +412,25 @@ namespace AutoDraw.Drawing
         /// Where a leg's dimension ends: at a bend, the face of the next leg farthest from this leg's middle (its outside
         /// size); at a free end, or where a curve of small bends starts, the end point itself.
         /// </summary>
-        private GeometryIntent Anchor(Curve o, bool start, List<Curve> all, HashSet<Curve> facets, double near, out bool bent)
+        private GeometryIntent Anchor(Curve o, bool start, List<Curve> all, List<Curve> arcs, HashSet<Curve> facets, double near, out bool bent)
         {
             bent = false;
             double px = start ? o.SX : o.EX, py = start ? o.SY : o.EY;
             double mx = (o.SX + o.EX) / 2, my = (o.SY + o.EY) / 2;
+            bool turns(Curve n) => n != o && !facets.Contains(n) && AngleBetween(Dir(n), Dir(o)) >= 25 * Math.PI / 180;
+            // the next leg: along the bend arc that starts at this end (a large bend radius puts it far away), else the
+            // nearest leg within reach; of its two faces, the one farthest from this leg
+            List<Curve> candidates;
+            Curve viaArc = Follow(px, py, arcs, all.Where(turns).ToList());
+            if (viaArc != null)
+                candidates = all.Where(k => k == viaArc || (AngleBetween(Dir(k), Dir(viaArc)) < 0.5 * Math.PI / 180 &&
+                    LineDistance(viaArc, (k.SX + k.EX) / 2, (k.SY + k.EY) / 2) < Math.Max(0.6, near * 2) && Overlap(viaArc, k))).ToList();
+            else
+                candidates = all.Where(n => turns(n) && Math.Min(Dist(px, py, n.SX, n.SY), Dist(px, py, n.EX, n.EY)) <= near).ToList();
             Curve next = null;
             double far = -1;
-            foreach (Curve n in all)
+            foreach (Curve n in candidates)
             {
-                if (n == o || facets.Contains(n) || AngleBetween(Dir(n), Dir(o)) < 25 * Math.PI / 180) continue;
-                double d = Math.Min(Dist(px, py, n.SX, n.SY), Dist(px, py, n.EX, n.EY));
-                if (d > near) continue;
                 double away = LineDistance(n, mx, my);
                 if (away > far) { far = away; next = n; }
             }
@@ -434,6 +443,22 @@ namespace AutoDraw.Drawing
                 catch (Exception ex) { Log.Write("Leg anchor failed: " + ex.Message); }
             }
             return start ? _sheet.CreateGeometryIntent(o.CS, o.PS) : _sheet.CreateGeometryIntent(o.CE, o.PE);
+        }
+
+        /// <summary>The line at the other end of the arc that ends at (px, py), or null.</summary>
+        private static Curve Follow(double px, double py, List<Curve> arcs, List<Curve> lines)
+        {
+            const double touch = 2e-3;
+            foreach (Curve a in arcs)
+            {
+                double qx, qy;
+                if (Dist(px, py, a.SX, a.SY) < touch) { qx = a.EX; qy = a.EY; }
+                else if (Dist(px, py, a.EX, a.EY) < touch) { qx = a.SX; qy = a.SY; }
+                else continue;
+                foreach (Curve n in lines)
+                    if (Dist(qx, qy, n.SX, n.SY) < touch || Dist(qx, qy, n.EX, n.EY) < touch) return n;
+            }
+            return null;
         }
 
         /// <summary>Joins pieces of one straight edge (split where another edge meets it) into one line.</summary>

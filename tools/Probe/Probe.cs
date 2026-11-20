@@ -35,6 +35,7 @@ internal static class Probe
         if (args[0] == "import") return Import(app, args[1]);
         if (args[0] == "tosheet") return ToSheet(app, args[1]);
         if (args[0] == "redim") return Redim(app, args[1], args[2]);
+        if (args[0] == "draw") return Draw(app, args[1], args[2]);
         if (args[0] == "convert")
         {
             // imports a STEP to a copy .ipt next to it, converts it as AutoDraw does and prints the detected type
@@ -349,6 +350,43 @@ internal static class Probe
     // Nothing is saved.
     // dimensions the first sheet of a copy of a drawing again with the current Dimensioner (all dimensions and notes
     // removed first) and exports it as PDF; the original is not touched
+    /// <summary>A plain drawing of a part (front, top, right; flat pattern when sheet metal), then Redim on it.</summary>
+    private static int Draw(Inventor.Application app, string ipt, string pdf)
+    {
+        string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ad_draw");
+        System.IO.Directory.CreateDirectory(dir);
+        string part = System.IO.Path.Combine(dir, System.IO.Path.GetFileName(ipt));
+        System.IO.File.Copy(ipt, part, true);
+        string idw = System.IO.Path.ChangeExtension(part, ".idw");
+        bool silent = app.SilentOperation;
+        app.SilentOperation = true;
+        try
+        {
+            var p = (PartDocument)app.Documents.Open(part, false);
+            var d = (DrawingDocument)app.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject,
+                app.FileManager.GetTemplateFile(DocumentTypeEnum.kDrawingDocumentObject), false);
+            Sheet s = d.Sheets[1];
+            var tg = app.TransientGeometry;
+            double w = s.Width, h = s.Height;
+            DrawingView front = s.DrawingViews.AddBaseView((_Document)p, tg.CreatePoint2d(w * 0.2, h * 0.65), 1.0,
+                ViewOrientationTypeEnum.kFrontViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle);
+            s.DrawingViews.AddProjectedView(front, tg.CreatePoint2d(w * 0.2, h * 0.25), DrawingViewStyleEnum.kFromBaseDrawingViewStyle);
+            s.DrawingViews.AddProjectedView(front, tg.CreatePoint2d(w * 0.45, h * 0.65), DrawingViewStyleEnum.kFromBaseDrawingViewStyle);
+            if (p.SubType == "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}")
+            {
+                NameValueMap o = app.TransientObjects.CreateNameValueMap();
+                o.Add("SheetMetalFoldedModel", false);
+                s.DrawingViews.AddBaseView((_Document)p, tg.CreatePoint2d(w * 0.72, h * 0.4), 1.0,
+                    ViewOrientationTypeEnum.kDefaultViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, "", null, o);
+            }
+            d.SaveAs(idw, false);
+            d.Close(true);
+            p.Close(true);
+        }
+        finally { app.SilentOperation = silent; }
+        return Redim(app, idw, pdf);
+    }
+
     private static int Redim(Inventor.Application app, string idw, string pdf)
     {
         string copy = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ad_redim_" + System.IO.Path.GetFileName(idw));
